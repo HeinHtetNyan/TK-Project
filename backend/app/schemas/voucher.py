@@ -1,6 +1,7 @@
 from datetime import datetime, date
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field, field_validator, field_serializer
+from app.models.enums import PaymentMethod
 
 class ItemBase(BaseModel):
     lb: float = Field(gt=0)
@@ -25,6 +26,7 @@ class VoucherBase(BaseModel):
     voucher_number: str
     voucher_date: Optional[date] = None
     paid_amount: float = Field(default=0.0, ge=0)
+    payment_method: Optional[PaymentMethod] = Field(default=None)
     note: Optional[str] = None
 
     @field_validator("voucher_date", mode="before")

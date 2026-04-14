@@ -1,10 +1,12 @@
 from datetime import datetime, date
 from typing import Optional, Any
 from pydantic import BaseModel, Field, field_validator, field_serializer
+from app.models.enums import PaymentMethod
 
 class PaymentBase(BaseModel):
     customer_id: int
     amount_paid: float = Field(ge=0)
+    payment_method: Optional[PaymentMethod] = Field(default=None)
     payment_date: Optional[date] = None
     note: Optional[str] = None
 

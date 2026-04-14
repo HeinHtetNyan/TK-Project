@@ -31,21 +31,30 @@ const CustomerSearch = ({ onSelect, onAdd, selectedCustomer }) => {
       };
       const timeoutId = setTimeout(fetchCustomers, 300);
       return () => clearTimeout(timeoutId);
-    } else {
+    }
+  }, [query]);
+
+  const handleQueryChange = (e) => {
+    const val = e.target.value;
+    setQuery(val);
+    if (val.trim().length === 0) {
       setResults([]);
       setShowResults(false);
     }
-  }, [query]);
+  };
 
   const handleSelect = (customer) => {
     onSelect(customer);
     setQuery('');
+    setResults([]);
     setShowResults(false);
   };
 
   const handleClear = () => {
     onSelect(null);
     setQuery('');
+    setResults([]);
+    setShowResults(false);
   };
 
   if (selectedCustomer) {
@@ -74,7 +83,7 @@ const CustomerSearch = ({ onSelect, onAdd, selectedCustomer }) => {
             className="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-lg"
             placeholder="Search Customer Name..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={handleQueryChange}
             onFocus={() => query && setShowResults(true)}
           />
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />

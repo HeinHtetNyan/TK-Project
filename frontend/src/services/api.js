@@ -15,11 +15,76 @@ const api = axios.create({
   baseURL: getBaseURL(),
 });
 
+// Add a request interceptor to attach the JWT token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add a response interceptor to handle 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const authService = {
+  checkSetup: () => api.get('/auth/check-setup'),
+  setup: (data) => api.post('/auth/setup', data),
+  login: async (username, password) => {
+    const formData = new FormData();
+    formData.append('username', username);
+    formData.append('password', password);
+    const response = await api.post('/auth/login', formData);
+    if (response.data.access_token) {
+      localStorage.setItem('token', response.data.access_token);
+      const userRes = await api.get('/users/me');
+      localStorage.setItem('user', JSON.stringify(userRes.data));
+      return userRes.data;
+    }
+    return null;
+  },
+  logout: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+  },
+  getCurrentUser: () => {
+    const user = localStorage.getItem('user');
+    return user ? JSON.parse(user) : null;
+  }
+};
+
+export const userService = {
+  create: (data) => api.post('/users', data),
+  list: () => api.get('/users'),
+  delete: (id) => api.delete(`/users/${id}`),
+  toggleActive: (id) => api.patch(`/users/${id}/toggle-active`),
+  getMe: () => api.get('/users/me'),
+};
+
 export const customerService = {
   create: (data) => api.post('/customers/', data),
   list: () => api.get('/customers/'),
   search: (name) => api.get(`/customers/search?name=${name}`),
   getBalance: (id) => api.get(`/customers/${id}/balance`),
+  delete: (id) => api.delete(`/customers/${id}`),
 };
 
 export const voucherService = {
@@ -32,9 +97,18 @@ export const voucherService = {
 
 export const paymentService = {
   create: (data) => api.post('/payments', data),
+  createBulk: (data) => api.post('/payments/bulk', data),
   listAll: () => api.get('/payments'),
   getCustomerPayments: (customerId) => api.get(`/customers/${customerId}/payments`),
   delete: (id) => api.delete(`/payments/${id}`),
+};
+
+export const analyticsService = {
+  getDashboard: () => api.get('/analytics/dashboard'),
+};
+
+export const auditService = {
+  list: () => api.get('/audit-logs'),
 };
 
 export default api;

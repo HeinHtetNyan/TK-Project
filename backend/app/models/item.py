@@ -1,5 +1,8 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
+
+if TYPE_CHECKING:
+    from .voucher import Voucher
 
 class Item(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

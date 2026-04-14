@@ -1,34 +1,36 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FilePlus, CreditCard, History, UserPlus, Users, Search as SearchIcon } from 'lucide-react';
 import Layout from '../components/Layout';
 import CustomerSearch from '../components/CustomerSearch';
 import BalanceDisplay from '../components/BalanceDisplay';
-import { customerService } from '../services/api';
+import Dashboard from '../components/Dashboard';
+import { customerService, analyticsService } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import { Trash2 } from 'lucide-react';
 
 const Home = () => {
+  const { isAdmin } = useAuth();
   const location = useLocation();
   const [selectedCustomer, setSelectedCustomer] = useState(location.state?.customer || null);
   const [balance, setBalance] = useState(0);
   const [allCustomers, setAllCustomers] = useState([]);
   const [showAll, setShowAll] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
+  const [dashboardData, setDashboardData] = useState(null);
   
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchAllCustomers();
-  }, []);
-
-  useEffect(() => {
-    if (selectedCustomer) {
-      fetchBalance(selectedCustomer.id);
-    } else {
-      setBalance(0);
+  const fetchDashboardData = async () => {
+    try {
+      const response = await analyticsService.getDashboard();
+      setDashboardData(response.data);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
     }
-  }, [selectedCustomer]);
+  };
 
   const fetchAllCustomers = async () => {
     try {
@@ -40,16 +42,26 @@ const Home = () => {
   };
 
   const fetchBalance = async (id) => {
-    setLoading(true);
     try {
       const response = await customerService.getBalance(id);
       setBalance(response.data.balance);
     } catch (error) {
       console.error('Error fetching balance:', error);
-    } finally {
-      setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchAllCustomers();
+    fetchDashboardData();
+  }, []);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      fetchBalance(selectedCustomer.id);
+    } else {
+      setBalance(0);
+    }
+  }, [selectedCustomer]);
 
   const handleAddCustomer = async (e) => {
     e.preventDefault();
@@ -64,6 +76,21 @@ const Home = () => {
     } catch (error) {
       alert('Error creating customer');
       console.error(error);
+    }
+  };
+
+  const handleDeleteCustomer = async (e, id) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this customer? This will also affect their history.')) return;
+    
+    try {
+      await customerService.delete(id);
+      if (selectedCustomer?.id === id) {
+        setSelectedCustomer(null);
+      }
+      fetchAllCustomers();
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Error deleting customer');
     }
   };
 
@@ -98,16 +125,28 @@ const Home = () => {
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-2 space-y-2 animate-in fade-in zoom-in duration-200">
                <div className="max-h-64 overflow-y-auto px-2 space-y-1">
                   {allCustomers.length > 0 ? allCustomers.map(c => (
-                    <button
+                    <div
                       key={c.id}
                       onClick={() => { setSelectedCustomer(c); setShowAll(false); }}
-                      className={`w-full text-left p-4 rounded-2xl transition-all flex justify-between items-center ${
+                      className={`w-full text-left p-4 rounded-2xl transition-all flex justify-between items-center cursor-pointer ${
                         selectedCustomer?.id === c.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-blue-50 text-gray-700 font-bold border-b border-gray-50 last:border-0'
                       }`}
                     >
                       <span className="text-lg">{c.name}</span>
-                      <span className={`text-[10px] uppercase font-black ${selectedCustomer?.id === c.id ? 'text-blue-200' : 'text-gray-400'}`}>ID: {c.id}</span>
-                    </button>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-[10px] uppercase font-black ${selectedCustomer?.id === c.id ? 'text-blue-200' : 'text-gray-400'}`}>ID: {c.id}</span>
+                        {isAdmin() && (
+                          <button
+                            onClick={(e) => handleDeleteCustomer(e, c.id)}
+                            className={`p-1.5 rounded-lg transition-all ${
+                              selectedCustomer?.id === c.id ? 'hover:bg-blue-700 text-blue-200 hover:text-white' : 'hover:bg-red-50 text-gray-300 hover:text-red-500'
+                            }`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )) : (
                     <p className="text-center py-8 text-gray-400 font-bold">No customers created yet</p>
                   )}
@@ -142,9 +181,13 @@ const Home = () => {
         )}
 
         {!selectedCustomer && !showAll && (
-          <div className="py-12 text-center text-gray-400 bg-white rounded-3xl border-2 border-dashed border-gray-200">
-            <UserPlus size={48} className="mx-auto mb-2 opacity-20" />
-            <p className="text-lg font-bold">Search or click 'Browse All Customers' to begin</p>
+          <div className="space-y-8 animate-in fade-in duration-700">
+            <Dashboard data={dashboardData} />
+            
+            <div className="py-12 text-center text-gray-400 bg-white rounded-3xl border-2 border-dashed border-gray-200">
+              <UserPlus size={48} className="mx-auto mb-2 opacity-20" />
+              <p className="text-lg font-bold">Search or click 'Browse All Customers' to begin</p>
+            </div>
           </div>
         )}
 

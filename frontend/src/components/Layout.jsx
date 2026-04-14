@@ -1,14 +1,21 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, FileText, CreditCard, History, BarChart3 } from 'lucide-react';
+import { Home, FileText, CreditCard, History, BarChart3, Users, LogOut, User as UserIcon, ShieldAlert } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 const Layout = ({ children }) => {
   const location = useLocation();
+  const { user, logout, isAdmin } = useAuth();
 
   const navItems = [
     { path: '/', icon: Home, label: 'Home' },
     { path: '/reports', icon: BarChart3, label: 'Reports' },
   ];
+
+  if (isAdmin()) {
+    navItems.push({ path: '/users', icon: Users, label: 'Users' });
+    navItems.push({ path: '/audit-logs', icon: ShieldAlert, label: 'Audit' });
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
@@ -22,8 +29,21 @@ const Layout = ({ children }) => {
           <h1 className="text-lg md:text-xl font-black tracking-tight leading-tight uppercase">TK Plastic Press</h1>
         </div>
 
+        {/* User Info (Desktop) */}
+        {user && (
+          <div className="hidden md:flex flex-col gap-1 p-4 mb-4 bg-blue-700/50 rounded-2xl border border-blue-500/30">
+            <div className="flex items-center gap-2">
+              <div className="bg-white/20 p-1.5 rounded-full">
+                <UserIcon size={16} />
+              </div>
+              <span className="font-bold truncate">{user.username}</span>
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-blue-200 ml-8">{user.role}</span>
+          </div>
+        )}
+
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex flex-col gap-2 mt-8 flex-grow">
+        <nav className="hidden md:flex flex-col gap-2 mt-4 flex-grow">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -41,11 +61,28 @@ const Layout = ({ children }) => {
             );
           })}
         </nav>
+
+        {/* Logout Button (Desktop) */}
+        <button
+          onClick={logout}
+          className="hidden md:flex items-center gap-3 p-4 rounded-2xl transition-all font-black uppercase text-xs tracking-widest text-blue-100 hover:bg-red-500 hover:text-white mt-auto mb-4"
+        >
+          <LogOut size={20} />
+          Logout
+        </button>
+
+        {/* Mobile Header Right */}
+        <div className="md:hidden flex items-center ml-auto gap-4">
+          {user && <span className="text-xs font-bold uppercase">{user.username}</span>}
+          <button onClick={logout} className="p-2 bg-blue-700 rounded-lg">
+            <LogOut size={18} />
+          </button>
+        </div>
       </header>
 
       {/* Main Content Area */}
       <main className="flex-grow p-4 md:p-8 md:ml-64 w-full transition-all">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-5xl mx-auto mb-20 md:mb-0">
           {children}
         </div>
       </main>
@@ -59,7 +96,7 @@ const Layout = ({ children }) => {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center py-1 px-8 rounded-xl transition-all ${
+              className={`flex flex-col items-center py-1 px-4 rounded-xl transition-all ${
                 isActive ? 'text-blue-600 scale-110' : 'text-gray-400'
               }`}
             >

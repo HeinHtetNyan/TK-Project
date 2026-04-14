@@ -1,17 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.db import init_db
-from app.routes import customers, vouchers, payments
+import os
 import logging
+from app.db import init_db
+from app.routes import customers, vouchers, payments, auth, users, analytics, audit
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-import os
-
 # Configuration from environment
-SHOW_DOCS = os.environ.get("SHOW_DOCS", "false").lower() == "true"
+SHOW_DOCS = os.environ.get("SHOW_DOCS", "true").lower() == "true"
+logger.info(f"Swagger documentation enabled: {SHOW_DOCS}")
 
 app = FastAPI(
     title="TK Plastic Press POS API",
@@ -35,9 +35,13 @@ def on_startup():
     init_db()
     logger.info("Database initialized.")
 
+app.include_router(auth.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 app.include_router(customers.router, prefix="/api")
 app.include_router(vouchers.router, prefix="/api")
 app.include_router(payments.router, prefix="/api")
+app.include_router(analytics.router, prefix="/api")
+app.include_router(audit.router, prefix="/api")
 
 @app.get("/")
 def read_root():

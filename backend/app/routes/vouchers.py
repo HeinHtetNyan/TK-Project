@@ -1,31 +1,38 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
+from sqlalchemy.exc import IntegrityError
 from app.db import get_session
-from app.models import Voucher, Customer
+from app.models import Voucher, Customer, User
 from app.schemas.voucher import VoucherCreate, VoucherRead
 from app.services.voucher import create_voucher_service
-
-from sqlalchemy.exc import IntegrityError
+from app.dependencies.auth import require_staff_or_admin, require_admin
+from app.services.balance import calculate_customer_balance
+from app.services.audit import log_action
 
 router = APIRouter(tags=["vouchers"])
 
 @router.post("/vouchers", response_model=VoucherRead)
-def create_voucher(voucher_in: VoucherCreate, session: Session = Depends(get_session)):
+def create_voucher(
+    voucher_in: VoucherCreate, 
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_staff_or_admin)
+):
     customer = session.get(Customer, voucher_in.customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     
     try:
-        return create_voucher_service(session, voucher_in)
+        return create_voucher_service(session, voucher_in, current_user.id)
     except IntegrityError:
         session.rollback()
         raise HTTPException(status_code=400, detail="Voucher number already exists. Please use a unique number.")
 
-from app.services.balance import calculate_customer_balance
-
 @router.get("/vouchers", response_model=List[VoucherRead])
-def list_all_vouchers(session: Session = Depends(get_session)):
+def list_all_vouchers(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_staff_or_admin)
+):
     results = session.exec(select(Voucher)).all()
     vouchers = []
     # Pre-calculate balances to avoid redundant queries in loops
@@ -44,7 +51,11 @@ def list_all_vouchers(session: Session = Depends(get_session)):
     return vouchers
 
 @router.get("/vouchers/{voucher_id}", response_model=VoucherRead)
-def get_voucher(voucher_id: int, session: Session = Depends(get_session)):
+def get_voucher(
+    voucher_id: int, 
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_staff_or_admin)
+):
     voucher = session.get(Voucher, voucher_id)
     if not voucher:
         raise HTTPException(status_code=404, detail="Voucher not found")
@@ -55,7 +66,11 @@ def get_voucher(voucher_id: int, session: Session = Depends(get_session)):
     return v_data
 
 @router.get("/customers/{customer_id}/vouchers", response_model=List[VoucherRead])
-def get_customer_vouchers(customer_id: int, session: Session = Depends(get_session)):
+def get_customer_vouchers(
+    customer_id: int, 
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_staff_or_admin)
+):
     customer = session.get(Customer, customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -73,11 +88,16 @@ def get_customer_vouchers(customer_id: int, session: Session = Depends(get_sessi
     return vouchers
 
 @router.delete("/vouchers/{voucher_id}")
-def delete_voucher(voucher_id: int, session: Session = Depends(get_session)):
+def delete_voucher(
+    voucher_id: int, 
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
     voucher = session.get(Voucher, voucher_id)
     if not voucher:
         raise HTTPException(status_code=404, detail="Voucher not found")
     
+    log_action(session, current_user.id, "DELETE", "Voucher", str(voucher_id), f"Voucher #{voucher.voucher_number} deleted")
     session.delete(voucher)
     session.commit()
     return {"message": "Voucher deleted successfully"}

@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, CreditCard, ChevronDown, ChevronUp, Filter, Trash2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import DropdownDatePicker from '../components/DropdownDatePicker';
 import { voucherService, paymentService } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 const History = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [customer, setCustomer] = useState(location.state?.customer || null);
+  const { isAdmin } = useAuth();
+  const customer = location.state?.customer || null;
   const [vouchers, setVouchers] = useState([]);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -19,15 +21,8 @@ const History = () => {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [selectedDate, setSelectedDate] = useState(''); 
 
-  useEffect(() => {
-    if (!customer) {
-      navigate('/');
-    } else {
-      fetchHistory();
-    }
-  }, [customer]);
-
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
+    if (!customer) return;
     setLoading(true);
     try {
       const [vRes, pRes] = await Promise.all([
@@ -41,7 +36,15 @@ const History = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [customer]);
+
+  useEffect(() => {
+    if (!customer) {
+      navigate('/');
+    } else {
+      fetchHistory();
+    }
+  }, [customer, navigate, fetchHistory]);
 
   const handleDeleteVoucher = async (e, id) => {
     e.stopPropagation();
@@ -49,7 +52,7 @@ const History = () => {
       try {
         await voucherService.delete(id);
         fetchHistory();
-      } catch (error) {
+      } catch {
         alert('Error deleting voucher');
       }
     }
@@ -60,7 +63,7 @@ const History = () => {
       try {
         await paymentService.delete(id);
         fetchHistory();
-      } catch (error) {
+      } catch {
         alert('Error deleting payment');
       }
     }
@@ -145,6 +148,15 @@ const History = () => {
                           <div className="flex items-center gap-2">
                             <span className="font-black text-gray-800 text-sm truncate">{item.voucher_number}</span>
                             <span className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded font-black text-gray-500 whitespace-nowrap">{item.voucher_date}</span>
+                            {item.paid_amount > 0 && item.payment_method && (
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase ${
+                                item.payment_method === 'KBZPAY' ? 'bg-blue-100 text-blue-600' : 
+                                item.payment_method === 'BANK_TRANSFER' ? 'bg-purple-100 text-purple-600' : 
+                                'bg-green-100 text-green-600'
+                              }`}>
+                                {item.payment_method === 'BANK_TRANSFER' ? 'BANK' : item.payment_method}
+                              </span>
+                            )}
                           </div>
                           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{item.items?.length || 0} Products</p>
                         </div>
@@ -157,12 +169,14 @@ const History = () => {
                           </span>
                         </div>
                         <div className="flex flex-col gap-1 items-end sm:flex-row sm:items-center sm:gap-3 ml-2">
-                           <button 
-                             onClick={(e) => handleDeleteVoucher(e, item.id)}
-                             className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all order-2 sm:order-1"
-                           >
-                             <Trash2 size={16} />
-                           </button>
+                           {isAdmin() && (
+                             <button 
+                               onClick={(e) => handleDeleteVoucher(e, item.id)}
+                               className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all order-2 sm:order-1"
+                             >
+                               <Trash2 size={16} />
+                             </button>
+                           )}
                            <div className="order-1 sm:order-2">
                              {expandedVoucher === item.id ? <ChevronUp size={16} className="text-gray-300" /> : <ChevronDown size={16} className="text-gray-300" />}
                            </div>
@@ -234,6 +248,15 @@ const History = () => {
                         <div className="flex items-center gap-2">
                           <span className="font-black text-green-700 text-sm">Direct Payment</span>
                           <span className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded font-black text-gray-500 whitespace-nowrap">{item.payment_date}</span>
+                          {item.payment_method && (
+                            <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase ${
+                              item.payment_method === 'KBZPAY' ? 'bg-blue-100 text-blue-600' : 
+                              item.payment_method === 'BANK_TRANSFER' ? 'bg-purple-100 text-purple-600' : 
+                              'bg-green-100 text-green-600'
+                            }`}>
+                              {item.payment_method === 'BANK_TRANSFER' ? 'BANK' : item.payment_method}
+                            </span>
+                          )}
                         </div>
                         {item.note && <p className="text-[10px] text-gray-500 italic truncate max-w-[150px]">"{item.note}"</p>}
                       </div>
@@ -245,12 +268,14 @@ const History = () => {
                           {item.amount_paid.toLocaleString()}
                         </span>
                       </div>
-                      <button 
-                        onClick={() => handleDeletePayment(item.id)}
-                        className="p-1.5 text-gray-200 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all group-hover:text-gray-300"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {isAdmin() && (
+                        <button 
+                          onClick={() => handleDeletePayment(item.id)}
+                          className="p-1.5 text-gray-200 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all group-hover:text-gray-300"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

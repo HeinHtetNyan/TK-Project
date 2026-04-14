@@ -1,5 +1,5 @@
-from sqlmodel import Session, select, func
-from app.models import Voucher, Payment, Item
+from sqlmodel import Session, select
+from app.models import Voucher, Payment
 
 def calculate_customer_balance(session: Session, customer_id: int) -> float:
     # 1. Sum of all items_total from all vouchers

@@ -1,8 +1,12 @@
 from datetime import datetime, date
-from zoneinfo import ZoneInfo
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
 from .customer import get_yangon_date, get_yangon_now
+from .enums import PaymentMethod
+
+if TYPE_CHECKING:
+    from .customer import Customer
+    from .item import Item
 
 class Voucher(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -13,6 +17,7 @@ class Voucher(SQLModel, table=True):
     previous_balance: float = Field(default=0.0)
     final_total: float = Field(default=0.0)
     paid_amount: float = Field(default=0.0)
+    payment_method: Optional[PaymentMethod] = Field(default=None) # Used if paid_amount > 0
     remaining_balance: float = Field(default=0.0)
     note: Optional[str] = None
     created_at: datetime = Field(default_factory=get_yangon_now)

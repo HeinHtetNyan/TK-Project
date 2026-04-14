@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Save, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Smartphone, Landmark, Banknote } from 'lucide-react';
 import Layout from '../components/Layout';
 import DropdownDatePicker from '../components/DropdownDatePicker';
 import { customerService, voucherService } from '../services/api';
@@ -8,13 +8,14 @@ import { customerService, voucherService } from '../services/api';
 const Voucher = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [customer, setCustomer] = useState(location.state?.customer || null);
+  const [customer] = useState(location.state?.customer || null);
   const [balance, setBalance] = useState(0);
   
   const [voucherNumber, setVoucherNumber] = useState('');
   const [voucherDate, setVoucherDate] = useState(new Date().toLocaleDateString('en-GB').split('/').join('-'));
   const [items, setItems] = useState([{ lb: '', plastic_size: '', plastic_price: '', color: '', color_price: '', total_price: 0 }]);
   const [paidAmount, setPaidAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -24,7 +25,7 @@ const Voucher = () => {
     } else {
       fetchBalance(customer.id);
     }
-  }, [customer]);
+  }, [customer, navigate]);
 
   const fetchBalance = async (id) => {
     try {
@@ -73,6 +74,7 @@ const Voucher = () => {
         voucher_number: voucherNumber,
         voucher_date: voucherDate,
         paid_amount: parseFloat(paidAmount) || 0,
+        payment_method: parseFloat(paidAmount) > 0 ? paymentMethod : null,
         note: note,
         items: items.map(item => ({
           lb: parseFloat(item.lb),
@@ -97,6 +99,12 @@ const Voucher = () => {
       setLoading(false);
     }
   };
+
+  const paymentMethods = [
+    { id: 'CASH', label: 'Cash', icon: Banknote, active: 'bg-green-600 text-white' },
+    { id: 'KBZPAY', label: 'KBZPay', icon: Smartphone, active: 'bg-blue-600 text-white' },
+    { id: 'BANK_TRANSFER', label: 'Bank', icon: Landmark, active: 'bg-purple-600 text-white' },
+  ];
 
   return (
     <Layout>
@@ -278,6 +286,29 @@ const Voucher = () => {
               </span>
             </div>
           </div>
+
+          {parseFloat(paidAmount) > 0 && (
+            <div className="space-y-2 px-1 animate-in fade-in slide-in-from-top-2 duration-300">
+              <label className="text-sm font-bold text-gray-600 uppercase">Payment Method</label>
+              <div className="grid grid-cols-3 gap-3">
+                {paymentMethods.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setPaymentMethod(m.id)}
+                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all gap-1 ${
+                      paymentMethod === m.id 
+                        ? `${m.active} border-transparent shadow-md transform scale-105` 
+                        : `bg-white border-gray-100 text-gray-400 hover:border-gray-200`
+                    }`}
+                  >
+                    <m.icon size={20} />
+                    <span className="text-[10px] font-black uppercase">{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <button
             type="submit"

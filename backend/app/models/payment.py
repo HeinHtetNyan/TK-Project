@@ -1,13 +1,17 @@
 from datetime import datetime, date
-from zoneinfo import ZoneInfo
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
 from .customer import get_yangon_date, get_yangon_now
+from .enums import PaymentMethod
+
+if TYPE_CHECKING:
+    from .customer import Customer
 
 class Payment(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_id: int = Field(foreign_key="customer.id")
     amount_paid: float = Field(ge=0)
+    payment_method: Optional[PaymentMethod] = Field(default=None)
     payment_date: date = Field(default_factory=get_yangon_date)
     note: Optional[str] = None
     created_at: datetime = Field(default_factory=get_yangon_now)

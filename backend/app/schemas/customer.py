@@ -4,9 +4,14 @@ from pydantic import BaseModel
 
 class CustomerBase(BaseModel):
     name: str
+    phone_numbers: Optional[str] = None
 
 class CustomerCreate(CustomerBase):
     pass
+
+class CustomerUpdate(BaseModel):
+    name: Optional[str] = None
+    phone_numbers: Optional[str] = None
 
 class CustomerRead(CustomerBase):
     id: int

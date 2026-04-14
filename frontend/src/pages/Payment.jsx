@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Save as SaveIcon, ArrowLeft as ArrowLeftIcon, CreditCard as CreditCardIcon } from 'lucide-react';
+import { Save as SaveIcon, ArrowLeft as ArrowLeftIcon, CreditCard as CreditCardIcon, Smartphone, Landmark, Banknote } from 'lucide-react';
 import Layout from '../components/Layout';
 import DropdownDatePicker from '../components/DropdownDatePicker';
 import { customerService, paymentService } from '../services/api';
@@ -9,13 +9,15 @@ import BalanceDisplay from '../components/BalanceDisplay';
 const Payment = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [customer, setCustomer] = useState(location.state?.customer || null);
+  const [customer] = useState(location.state?.customer || null);
   const [balance, setBalance] = useState(0);
   
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [paymentDate, setPaymentDate] = useState(new Date().toLocaleDateString('en-GB').split('/').join('-'));
   const [loading, setLoading] = useState(false);
+  const [isBulk, setIsBulk] = useState(true);
 
   useEffect(() => {
     if (!customer) {
@@ -23,7 +25,7 @@ const Payment = () => {
     } else {
       fetchBalance(customer.id);
     }
-  }, [customer]);
+  }, [customer, navigate]);
 
   const fetchBalance = async (id) => {
     try {
@@ -43,11 +45,16 @@ const Payment = () => {
       const paymentData = {
         customer_id: customer.id,
         amount_paid: parseFloat(amount),
+        payment_method: paymentMethod,
         payment_date: paymentDate,
         note: note
       };
 
-      await paymentService.create(paymentData);
+      if (isBulk) {
+        await paymentService.createBulk(paymentData);
+      } else {
+        await paymentService.create(paymentData);
+      }
       alert('Payment Saved Successfully!');
       navigate('/', { state: { customer: customer } });
     } catch (error) {
@@ -57,6 +64,12 @@ const Payment = () => {
       setLoading(false);
     }
   };
+
+  const paymentMethods = [
+    { id: 'CASH', label: 'Cash', icon: Banknote, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', active: 'bg-green-600 text-white' },
+    { id: 'KBZPAY', label: 'KBZPay', icon: Smartphone, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', active: 'bg-blue-600 text-white' },
+    { id: 'BANK_TRANSFER', label: 'Bank', icon: Landmark, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', active: 'bg-purple-600 text-white' },
+  ];
 
   return (
     <Layout>
@@ -98,6 +111,47 @@ const Payment = () => {
                     value={paymentDate} 
                     onChange={setPaymentDate} 
                   />
+
+                  <div className="flex items-center justify-between bg-blue-50 p-4 rounded-2xl border-2 border-blue-100">
+                    <div>
+                      <span className="font-black text-blue-800 text-sm block">Settle Oldest Debts First (FIFO)</span>
+                      <span className="text-[10px] font-bold text-blue-600 uppercase">Recommended for regular payments</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsBulk(!isBulk)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                        isBulk ? 'bg-blue-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          isBulk ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-gray-600 uppercase px-1">Payment Method</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {paymentMethods.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setPaymentMethod(m.id)}
+                          className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all gap-1 ${
+                            paymentMethod === m.id 
+                              ? `${m.active} border-transparent shadow-md transform scale-105` 
+                              : `bg-white border-gray-100 text-gray-400 hover:border-gray-200`
+                          }`}
+                        >
+                          <m.icon size={20} />
+                          <span className="text-[10px] font-black uppercase">{m.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   
                   <div className="space-y-1">
                     <label className="text-sm font-bold text-gray-600 uppercase px-1">Note (Optional)</label>
