@@ -1,111 +1,220 @@
 # TK Plastic Press POS System
 
-A modern, offline-capable Point of Sale (POS) system designed for TK Plastic Press. This project includes a robust FastAPI backend, a responsive React frontend with offline synchronization, and a native Android WebView wrapper for mobile deployment.
+A modern, offline-capable Point of Sale (POS) system designed for TK Plastic Press. Built with a FastAPI backend, a React 19 frontend with offline synchronization, PostgreSQL database, and a native Android WebView wrapper for mobile deployment.
 
-## 🚀 Key Features
+## Key Features
 
-- **Offline-First Architecture**: Create vouchers and process payments even without an internet connection. Data is automatically synchronized when connectivity is restored using a custom sync engine and Dexie (IndexedDB).
+- **Offline-First Architecture**: Create vouchers and process payments without an internet connection. Data is automatically synchronized when connectivity is restored via a custom sync engine backed by Dexie.js (IndexedDB).
+- **Idempotent Sync**: All offline operations use `client_id` UUIDs to prevent duplicate records on retry.
+- **FIFO Payment Settlement**: Bulk payments are automatically applied to unpaid vouchers in chronological order.
 - **Comprehensive POS Functionality**:
-  - Customer management and balance tracking.
-  - Voucher creation and management.
-  - Payment processing and history.
-  - Real-time analytics and reporting.
+  - Customer management with balance tracking and address records.
+  - Voucher creation with line items (plastic size, color, pricing).
+  - Payment processing (Cash, Bank Transfer, KBZPay) with history.
+  - Real-time analytics dashboard: 30-day sales trends, debt overview, income by payment method, top customers.
 - **Security & Role-Based Access**:
-  - Secure JWT-based authentication.
-  - Role-based permissions (Admin vs. Standard User).
-  - Detailed audit logs for tracking system-wide actions.
-- **Native Android Integration**: A optimized Android WebView wrapper providing a seamless mobile experience with pull-to-refresh and back-button handling.
+  - JWT-based authentication with configurable token expiry.
+  - Role-based permissions: Admin vs. Staff.
+  - Detailed audit logs for all create, update, and delete actions.
+- **Multi-Language Support**: Language context built into the frontend for localization.
+- **Native Android Integration**: Android WebView wrapper with network-awareness, pull-to-refresh, and back-button handling.
 - **Enterprise-Ready Infrastructure**:
-  - Containerized with Docker for easy deployment.
-  - Automated daily database backups.
-  - PostgreSQL database with Alembic migrations.
+  - Fully containerized with Docker Compose (dev and production configs).
+  - Nginx reverse proxy serving built frontend and proxying API requests.
+  - Automated daily PostgreSQL backups (7-day daily, 4-week weekly, 6-month monthly retention).
 
-## 🛠 Tech Stack
+## Tech Stack
 
 ### Backend
-- **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python)
-- **Database ORM**: [SQLModel](https://sqlmodel.tiangolo.com/) (SQLAlchemy + Pydantic)
-- **Database**: PostgreSQL 15
-- **Migrations**: Alembic
-- **Auth**: JWT (JSON Web Tokens) with Passlib (Bcrypt)
+| Technology | Purpose |
+|------------|---------|
+| FastAPI (Python) | REST API framework |
+| SQLModel (SQLAlchemy + Pydantic) | ORM and schema validation |
+| PostgreSQL 15 | Primary database |
+| Alembic | Database migrations |
+| Passlib + Bcrypt | Password hashing |
+| python-jose | JWT token generation and verification |
+| Uvicorn | ASGI server (2 workers in production) |
 
 ### Frontend
-- **Framework**: [React](https://react.dev/) 19 (Vite)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-- **Icons**: [Lucide React](https://lucide.dev/)
-- **State & Storage**: [Dexie.js](https://dexie.org/) (IndexedDB) for offline data storage.
-- **Routing**: React Router 7
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| React | 19.2.4 | UI framework |
+| Vite | 8.0.4 | Build tool with HMR |
+| Tailwind CSS | 4.2.2 | Utility-first styling |
+| Dexie.js | 4.4.2 | IndexedDB (offline storage & sync queue) |
+| React Router | 7 | Client-side routing |
+| Axios | 1.15.0 | HTTP client with JWT interceptors |
+| Recharts | 3.8.1 | Analytics charts |
+| Lucide React | — | Icons |
 
 ### Mobile
 - **Language**: Kotlin
-- **Platform**: Android Native (WebView)
-- **Features**: Network status monitoring, performance optimizations, and native UI controls.
+- **Platform**: Android (API 24+) — native WebView wrapper
+- **Features**: Network status monitoring, performance optimizations, native UI controls
 
-## 📦 Project Structure
+### Infrastructure
+- **Containerization**: Docker Compose (dev + production)
+- **Reverse Proxy**: Nginx (static asset caching, GZIP compression, SPA fallback)
+- **Database Backups**: `prodrigestivill/postgres-backup-local`
+
+## Project Structure
 
 ```text
 TK-Project/
-├── android/          # Native Android WebView wrapper
-├── backend/          # FastAPI application, database models, and migrations
-├── frontend/         # React web application
-├── nginx/            # Nginx proxy configuration
-├── backups/          # Automated database backups
-├── docker-compose.yml # Main Docker orchestration
-└── .env.example      # Environment variables template
+├── android/                  # Native Android WebView wrapper (Kotlin)
+├── backend/                  # FastAPI application
+│   ├── app/
+│   │   ├── models/           # SQLModel database models
+│   │   ├── routes/           # API route handlers
+│   │   ├── schemas/          # Pydantic request/response schemas
+│   │   ├── services/         # Business logic (audit, balance, vouchers)
+│   │   ├── dependencies/     # Auth dependencies (JWT, role checks)
+│   │   └── core/             # Security utilities
+│   └── alembic/              # Database migrations
+├── frontend/                 # React + Vite application
+│   └── src/
+│       ├── pages/            # Route-level page components
+│       ├── components/       # Reusable UI components
+│       ├── services/         # API client and sync engine
+│       ├── context/          # Auth and Language context providers
+│       ├── hooks/            # Custom React hooks
+│       └── lib/              # Dexie DB setup
+├── nginx/                    # Nginx proxy configuration
+├── backups/                  # Automated database backup files
+├── docker-compose.yml        # Development Docker orchestration
+├── docker-compose.prod.yml   # Production Docker orchestration
+└── .env.example              # Environment variables template
 ```
 
-## ⚙️ Setup & Installation
+## Setup & Installation
 
-### 1. Prerequisites
+### Prerequisites
 - Docker and Docker Compose
 - (For Android) Android Studio
 
-### 2. Environment Configuration
-Copy the `.env.example` file to `.env` and update the values:
+### 1. Environment Configuration
+
+Copy the `.env.example` to `.env` and fill in your values:
+
 ```bash
 cp .env.example .env
 ```
-Ensure you generate a secure `SECRET_KEY` using:
+
+Generate a secure `SECRET_KEY`:
+
 ```bash
 openssl rand -hex 32
 ```
 
-### 3. Development Mode
-Start the stack in development mode (supports hot-reloading for frontend):
+**Required environment variables:**
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DATABASE_URL` | Full PostgreSQL connection string | `postgresql://user:pass@postgres:5432/tkdb` |
+| `POSTGRES_USER` | Database username | `tkadmin` |
+| `POSTGRES_PASSWORD` | Database password | `strongpassword` |
+| `POSTGRES_DB` | Database name | `tkdb` |
+| `SECRET_KEY` | JWT signing secret (generate with openssl) | `abc123...` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | JWT token lifetime in minutes | `480` (8 hours) |
+| `TZ` | Server timezone | `Asia/Yangon` |
+| `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:5173` |
+| `SHOW_DOCS` | Enable Swagger UI (`true` in dev, `false` in prod) | `false` |
+
+### 2. Development Mode
+
+Starts backend (port 8000), frontend with HMR (port 5173), and PostgreSQL (port 5432):
+
 ```bash
 docker-compose up -d --build
 ```
-The services will be available at:
-- **Frontend**: [http://localhost:5173](http://localhost:5173)
-- **Backend API Docs**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
 
-### 4. Production Deployment
-For production, use the dedicated production configuration which uses Nginx to serve the built frontend and proxy API requests:
-```bash
-docker-compose -f docker-compose.prod.yml up -d --build
-```
-In production:
-- **Frontend & API**: [http://localhost](http://localhost) (or your configured domain)
-- Only port 80 is exposed. All other services (Postgres, Backend) communicate over an internal Docker network.
-- Automated daily backups are stored in the `./backups` directory.
+Services available at:
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:8000
+- **Swagger Docs** (if `SHOW_DOCS=true`): http://localhost:8000/api/docs
 
-### 5. Database Migrations
-If you make changes to the database models, run:
+### 3. Database Migrations
+
+On first run, apply the schema:
+
 ```bash
 docker-compose exec backend alembic upgrade head
 ```
 
+When you update database models, generate and apply a new migration:
+
+```bash
+docker-compose exec backend alembic revision --autogenerate -m "describe_change"
+docker-compose exec backend alembic upgrade head
+```
+
+### 4. First-Time Setup
+
+On first login, the system will prompt you to create the initial admin account via the setup endpoint (`POST /api/auth/setup`). This endpoint is only available when no users exist.
+
+### 5. Production Deployment
+
+Use the production compose file which serves the built frontend through Nginx on port 80:
+
+```bash
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+
+In production:
+- **App**: http://localhost (or your configured domain) — port 80 only
+- Backend and PostgreSQL are on an internal Docker network (not exposed)
+- Set `SHOW_DOCS=false` and restrict `ALLOWED_ORIGINS` to your domain
+
 ### 6. Android Build
+
 1. Open the `android/` directory in Android Studio.
-2. Define your POS URL in `android/local.properties`:
+2. Define your POS server URL in `android/local.properties`:
    ```properties
    pos.url=https://your-pos-url.com
    ```
-3. Build and run the app on your device or emulator.
+3. Build and deploy to device or emulator.
 
-## 🛡 Security & Best Practices
-- **Backups**: The `db-backup` service automatically creates daily backups of the PostgreSQL database, keeping them for up to 6 months.
-- **Production**: In production, ensure `SHOW_DOCS` is set to `false` and `ALLOWED_ORIGINS` is restricted to your specific domains.
+## API Overview
 
-## 📝 License
-Proprietary for TK Plastic Press.
+All routes are prefixed with `/api`.
+
+| Module | Prefix | Key Endpoints |
+|--------|--------|---------------|
+| Auth | `/auth` | `POST /login`, `POST /setup`, `GET /check-setup` |
+| Users | `/users` | CRUD user management (admin-only for most actions) |
+| Customers | `/customers` | Create, list, search, update, balance, delete |
+| Vouchers | `/vouchers` | Create with items, list, get by customer, delete |
+| Payments | `/payments` | Create, bulk create (FIFO settlement), list, delete |
+| Analytics | `/analytics` | `GET /dashboard` — 30-day metrics |
+| Audit Logs | `/audit-logs` | List all audit entries (admin-only) |
+
+## Database Models
+
+| Model | Description |
+|-------|-------------|
+| `User` | System users with roles (ADMIN, STAFF) |
+| `Customer` | Customers with name, phone, address, and balance relations |
+| `Voucher` | Sales vouchers with items, totals, and payment tracking |
+| `Item` | Line items on a voucher (plastic size, color, pricing) |
+| `Payment` | Standalone payments against customer balances |
+| `AuditLog` | Immutable log of all create/update/delete actions |
+
+## Key Architectural Patterns
+
+- **Offline-First Sync**: Frontend queues operations in IndexedDB and replays them to the backend every 15 seconds when online.
+- **Idempotency**: Vouchers, customers, and payments accept a `client_id` UUID to prevent duplicates on retry.
+- **FIFO Settlement**: Bulk payments settle against the oldest unpaid vouchers first.
+- **Audit Trail**: Every mutation records the user, action type, target, and details.
+- **Timezone**: All dates are handled in `Asia/Yangon` (UTC+6:30).
+
+## Security
+
+- In production, set `SHOW_DOCS=false` to disable the Swagger UI.
+- Restrict `ALLOWED_ORIGINS` to your exact frontend domain.
+- Backups are created daily and retained for 7 days (daily), 4 weeks (weekly), and 6 months (monthly) in `./backups/`.
+- Rotate your `SECRET_KEY` periodically and update all active sessions.
+
+## License
+
+Proprietary — TK Plastic Press. All rights reserved.
