@@ -1,6 +1,7 @@
 # Environment variables
 .env
 backend/.env
+frontend/.env
 
 # Android
 android/local.properties

@@ -32,7 +32,7 @@ const Layout = ({ children }) => {
           <div className="w-16 h-10 bg-white rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center shadow-inner">
             <img src="/TK.jpeg" alt="TK Logo" className="w-full h-full object-cover" onError={(e) => e.target.style.display='none'} />
           </div>
-          <h1 className="text-lg md:text-xl font-black tracking-tight leading-tight uppercase">TK Plastic Press</h1>
+          <h1 className="text-lg md:text-xl font-black tracking-tight leading-tight uppercase">{import.meta.env.VITE_APP_NAME}</h1>
         </div>
 
         {/* Language Toggle */}
