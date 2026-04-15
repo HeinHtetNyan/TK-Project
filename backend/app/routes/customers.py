@@ -4,8 +4,9 @@ from sqlmodel import Session, select
 from app.db import get_session
 from app.models import Customer
 from app.models.user import User
-from app.schemas.customer import CustomerCreate, CustomerRead, CustomerBalance
+from app.schemas.customer import CustomerCreate, CustomerRead, CustomerBalance, CustomerUpdate
 from app.services.balance import calculate_customer_balance
+from app.services.audit import log_action
 from app.dependencies.auth import require_staff_or_admin, require_admin
 
 router = APIRouter(prefix="/customers", tags=["customers"])
@@ -28,6 +29,16 @@ def create_customer(
     session.add(db_customer)
     session.commit()
     session.refresh(db_customer)
+    
+    log_action(
+        session,
+        user_id=current_user.id,
+        action="CREATE_CUSTOMER",
+        target_type="CUSTOMER",
+        target_id=db_customer.id,
+        details=f"Created customer: {db_customer.name}"
+    )
+
     return db_customer
 
 @router.get("/", response_model=List[CustomerRead])
@@ -47,6 +58,36 @@ def search_customers(
     statement = select(Customer).where(Customer.name.ilike(f"%{name}%"))
     customers = session.exec(statement).all()
     return customers
+
+@router.put("/{customer_id}", response_model=CustomerRead)
+def update_customer(
+    customer_id: int,
+    customer_update: CustomerUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_staff_or_admin)
+):
+    db_customer = session.get(Customer, customer_id)
+    if not db_customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    update_data = customer_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_customer, key, value)
+
+    session.add(db_customer)
+    session.commit()
+    session.refresh(db_customer)
+
+    log_action(
+        session,
+        user_id=current_user.id,
+        action="UPDATE_CUSTOMER",
+        target_type="CUSTOMER",
+        target_id=db_customer.id,
+        details=f"Updated customer: {db_customer.name} (ID: {db_customer.id})"
+    )
+
+    return db_customer
 
 @router.get("/{customer_id}/balance", response_model=CustomerBalance)
 def get_customer_balance(

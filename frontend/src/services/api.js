@@ -81,6 +81,7 @@ export const userService = {
 
 export const customerService = {
   create: (data) => api.post('/customers/', data),
+  update: (id, data) => api.put(`/customers/${id}`, data),
   list: () => api.get('/customers/'),
   search: (name) => api.get(`/customers/search?name=${name}`),
   getBalance: (id) => api.get(`/customers/${id}/balance`),

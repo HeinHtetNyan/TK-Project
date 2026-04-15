@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FilePlus, CreditCard, History, UserPlus, Users, Search as SearchIcon } from 'lucide-react';
+import { FilePlus, CreditCard, History, UserPlus, Users, Search as SearchIcon, Pencil, Trash2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import CustomerSearch from '../components/CustomerSearch';
 import BalanceDisplay from '../components/BalanceDisplay';
@@ -16,7 +16,6 @@ import {
 } from '../services/syncService';
 import db, { generateUUID } from '../lib/db';
 import { useAuth } from '../hooks/useAuth';
-import { Trash2 } from 'lucide-react';
 
 const Home = () => {
   const { isAdmin } = useAuth();
@@ -31,10 +30,21 @@ const Home = () => {
   const [allCustomers, setAllCustomers] = useState([]);
   const [showAll, setShowAll] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newCustomerName, setNewCustomerName] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [customerForm, setCustomerForm] = useState({
+    name: '',
+    phone_numbers: '',
+    address: ''
+  });
+  const [editingCustomer, setEditingCustomer] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
 
   const navigate = useNavigate();
+
+  const resetForm = () => {
+    setCustomerForm({ name: '', phone_numbers: '', address: '' });
+    setEditingCustomer(null);
+  };
 
   // ------------------------------------------------------------------
   // Customer loading
@@ -123,15 +133,15 @@ const Home = () => {
   }, [selectedCustomer, fetchBalance]);
 
   // ------------------------------------------------------------------
-  // Customer creation
+  // Customer creation / update
   // ------------------------------------------------------------------
   const handleAddCustomer = async (e) => {
     e.preventDefault();
-    if (!newCustomerName.trim()) return;
+    if (!customerForm.name.trim()) return;
 
     if (navigator.onLine) {
       try {
-        const response = await customerService.create({ name: newCustomerName });
+        const response = await customerService.create(customerForm);
         const enriched = enrichCustomer(response.data);
         // Cache in background
         db.customers.put({
@@ -139,13 +149,14 @@ const Home = () => {
           server_id: enriched.server_id,
           name: enriched.name,
           phone_numbers: enriched.phone_numbers ?? null,
+          address: enriched.address ?? null,
           created_at: enriched.created_at,
           sync_status: 'synced',
         }).catch(() => {});
 
         setSelectedCustomer(enriched);
         setShowAddModal(false);
-        setNewCustomerName('');
+        resetForm();
         fetchAllCustomers();
       } catch (error) {
         alert(error.response?.data?.detail || 'Error creating customer');
@@ -159,8 +170,9 @@ const Home = () => {
         await db.customers.add({
           client_id: clientId,
           server_id: null,
-          name: newCustomerName.trim(),
-          phone_numbers: null,
+          name: customerForm.name.trim(),
+          phone_numbers: customerForm.phone_numbers.trim() || null,
+          address: customerForm.address.trim() || null,
           created_at: now,
           sync_status: 'pending',
         });
@@ -168,7 +180,7 @@ const Home = () => {
           client_id: clientId,
           type: 'customer',
           action: 'create',
-          payload: { name: newCustomerName.trim() },
+          payload: { ...customerForm },
           status: 'pending',
           retries: 0,
           depends_on_client_id: null,
@@ -179,15 +191,16 @@ const Home = () => {
           id: clientId,
           client_id: clientId,
           server_id: null,
-          name: newCustomerName.trim(),
-          phone_numbers: null,
+          name: customerForm.name.trim(),
+          phone_numbers: customerForm.phone_numbers.trim() || null,
+          address: customerForm.address.trim() || null,
           created_at: now,
           sync_status: 'pending',
         };
 
         setSelectedCustomer(enriched);
         setShowAddModal(false);
-        setNewCustomerName('');
+        resetForm();
         setAllCustomers(prev =>
           [...prev, enriched].sort((a, b) => a.name.localeCompare(b.name))
         );
@@ -195,6 +208,53 @@ const Home = () => {
       } catch (err) {
         alert('Error saving customer: ' + err.message);
       }
+    }
+  };
+
+  const handleEditClick = (e, customer) => {
+    e.stopPropagation();
+    if (!navigator.onLine) {
+      alert('Editing customers is only available while online.');
+      return;
+    }
+    setEditingCustomer(customer);
+    setCustomerForm({
+      name: customer.name || '',
+      phone_numbers: customer.phone_numbers || '',
+      address: customer.address || ''
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateCustomer = async (e) => {
+    e.preventDefault();
+    if (!editingCustomer || !customerForm.name.trim()) return;
+
+    try {
+      const serverId = editingCustomer.server_id || editingCustomer.id;
+      const response = await customerService.update(serverId, customerForm);
+      const enriched = enrichCustomer(response.data);
+      
+      // Update cache
+      await db.customers.put({
+        client_id: enriched.client_id,
+        server_id: enriched.server_id,
+        name: enriched.name,
+        phone_numbers: enriched.phone_numbers ?? null,
+        address: enriched.address ?? null,
+        created_at: enriched.created_at,
+        sync_status: 'synced',
+      });
+
+      if (selectedCustomer?.id === enriched.id || selectedCustomer?.server_id === enriched.server_id) {
+        setSelectedCustomer(enriched);
+      }
+      
+      setShowEditModal(false);
+      resetForm();
+      fetchAllCustomers();
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Error updating customer');
     }
   };
 
@@ -238,6 +298,7 @@ const Home = () => {
             <CustomerSearch
               onSelect={(c) => setSelectedCustomer(c ? enrichCustomer(c) : null)}
               onAdd={() => setShowAddModal(true)}
+              onEdit={handleEditClick}
               selectedCustomer={selectedCustomer}
             />
           ) : (
@@ -253,8 +314,11 @@ const Home = () => {
                         : 'hover:bg-blue-50 text-gray-700 font-bold border-b border-gray-50 last:border-0'
                     }`}
                   >
-                    <span className="text-lg">{c.name}</span>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col">
+                      <span className="text-lg">{c.name}</span>
+                      {c.phone_numbers && <span className={`text-[10px] font-medium ${(selectedCustomer?.client_id === c.client_id || selectedCustomer?.id === c.id) ? 'text-blue-100' : 'text-gray-400'}`}>{c.phone_numbers}</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5">
                       {c.sync_status === 'pending' && (
                         <span className="text-[9px] bg-yellow-400 text-yellow-900 px-1.5 py-0.5 rounded-full font-black uppercase">Offline</span>
                       )}
@@ -264,18 +328,30 @@ const Home = () => {
                       }`}>
                         {c.server_id ? `ID: ${c.server_id}` : 'Local'}
                       </span>
-                      {isAdmin() && c.server_id && (
+                      <div className="flex gap-1 ml-2">
                         <button
-                          onClick={(e) => handleDeleteCustomer(e, c.server_id)}
+                          onClick={(e) => handleEditClick(e, c)}
                           className={`p-1.5 rounded-lg transition-all ${
                             (selectedCustomer?.client_id === c.client_id || selectedCustomer?.id === c.id)
                               ? 'hover:bg-blue-700 text-blue-200 hover:text-white'
-                              : 'hover:bg-red-50 text-gray-300 hover:text-red-500'
+                              : 'hover:bg-blue-50 text-gray-300 hover:text-blue-600'
                           }`}
                         >
-                          <Trash2 size={16} />
+                          <Pencil size={16} />
                         </button>
-                      )}
+                        {isAdmin() && c.server_id && (
+                          <button
+                            onClick={(e) => handleDeleteCustomer(e, c.server_id)}
+                            className={`p-1.5 rounded-lg transition-all ${
+                              (selectedCustomer?.client_id === c.client_id || selectedCustomer?.id === c.id)
+                                ? 'hover:bg-blue-700 text-blue-200 hover:text-white'
+                                : 'hover:bg-red-50 text-gray-300 hover:text-red-500'
+                            }`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )) : (
@@ -329,30 +405,50 @@ const Home = () => {
 
         {showAddModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in duration-200">
+            <div className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
               <h3 className="text-2xl font-black mb-6 text-gray-800">New Customer</h3>
               {!navigator.onLine && (
                 <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2 text-[11px] font-bold text-yellow-700">
                   You are offline. Customer will sync when internet is available.
                 </div>
               )}
-              <form onSubmit={handleAddCustomer} className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Customer Name</label>
+              <form onSubmit={handleAddCustomer} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Customer Name *</label>
                   <input
                     autoFocus
                     type="text"
                     required
                     className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-lg transition-all"
                     placeholder="e.g. Mg Mg"
-                    value={newCustomerName}
-                    onChange={(e) => setNewCustomerName(e.target.value)}
+                    value={customerForm.name}
+                    onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
                   />
                 </div>
-                <div className="flex gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Phone Number</label>
+                  <input
+                    type="text"
+                    className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-lg transition-all"
+                    placeholder="e.g. 09..."
+                    value={customerForm.phone_numbers}
+                    onChange={(e) => setCustomerForm({ ...customerForm, phone_numbers: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Address</label>
+                  <textarea
+                    className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-lg transition-all resize-none"
+                    rows="2"
+                    placeholder="Customer address..."
+                    value={customerForm.address}
+                    onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
+                  />
+                </div>
+                <div className="flex gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowAddModal(false)}
+                    onClick={() => { setShowAddModal(false); resetForm(); }}
                     className="flex-1 px-4 py-4 bg-gray-100 rounded-2xl font-black text-gray-500 uppercase text-xs"
                   >
                     Cancel
@@ -362,6 +458,63 @@ const Home = () => {
                     className="flex-1 px-4 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-200 uppercase text-xs"
                   >
                     Create
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {showEditModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-in fade-in">
+            <div className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
+              <h3 className="text-2xl font-black mb-6 text-gray-800">Edit Customer</h3>
+              <form onSubmit={handleUpdateCustomer} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Customer Name *</label>
+                  <input
+                    autoFocus
+                    type="text"
+                    required
+                    className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-lg transition-all"
+                    placeholder="e.g. Mg Mg"
+                    value={customerForm.name}
+                    onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Phone Number</label>
+                  <input
+                    type="text"
+                    className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-lg transition-all"
+                    placeholder="e.g. 09..."
+                    value={customerForm.phone_numbers}
+                    onChange={(e) => setCustomerForm({ ...customerForm, phone_numbers: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Address</label>
+                  <textarea
+                    className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-lg transition-all resize-none"
+                    rows="2"
+                    placeholder="Customer address..."
+                    value={customerForm.address}
+                    onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
+                  />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowEditModal(false); resetForm(); }}
+                    className="flex-1 px-4 py-4 bg-gray-100 rounded-2xl font-black text-gray-500 uppercase text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-200 uppercase text-xs"
+                  >
+                    Save Changes
                   </button>
                 </div>
               </form>

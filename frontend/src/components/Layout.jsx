@@ -8,6 +8,11 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, isAdmin } = useAuth();
+  const [lang, setLang] = React.useState('EN');
+
+  const toggleLang = () => {
+    setLang(prev => prev === 'EN' ? 'MM' : 'EN');
+  };
 
   const navItems = [
     { path: '/', icon: Home, label: 'Home' },
@@ -28,6 +33,22 @@ const Layout = ({ children }) => {
             <img src="/TK.jpeg" alt="TK Logo" className="w-full h-full object-cover" onError={(e) => e.target.style.display='none'} />
           </div>
           <h1 className="text-lg md:text-xl font-black tracking-tight leading-tight uppercase">TK Plastic Press</h1>
+        </div>
+
+        {/* Language Toggle */}
+        <div className="flex gap-1 mb-6 p-1 bg-blue-700/30 rounded-xl self-start">
+          <button
+            onClick={() => setLang('EN')}
+            className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${lang === 'EN' ? 'bg-white text-blue-600 shadow-sm' : 'text-blue-200 hover:text-white'}`}
+          >
+            ENGLISH
+          </button>
+          <button
+            onClick={() => setLang('MM')}
+            className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${lang === 'MM' ? 'bg-white text-blue-600 shadow-sm' : 'text-blue-200 hover:text-white'}`}
+          >
+            MYANMAR
+          </button>
         </div>
 
         {/* User Info (Desktop) */}
@@ -79,6 +100,12 @@ const Layout = ({ children }) => {
 
         {/* Mobile Header Right — username + sync pill + logout */}
         <div className="md:hidden flex items-center ml-auto gap-3">
+          <button
+            onClick={toggleLang}
+            className="px-2 py-1 bg-blue-700 rounded-lg text-[10px] font-black border border-blue-500/30"
+          >
+            {lang}
+          </button>
           {user && <span className="text-xs font-bold uppercase">{user.username}</span>}
           <SyncStatus />
           <button onClick={logout} className="p-2 bg-blue-700 rounded-lg">

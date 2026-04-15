@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, UserPlus, X } from 'lucide-react';
+import { Search, UserPlus, X, Pencil } from 'lucide-react';
 import { customerService } from '../services/api';
 import db from '../lib/db';
 
-const CustomerSearch = ({ onSelect, onAdd, selectedCustomer }) => {
+const CustomerSearch = ({ onSelect, onAdd, onEdit, selectedCustomer }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
@@ -71,16 +71,36 @@ const CustomerSearch = ({ onSelect, onAdd, selectedCustomer }) => {
   if (selectedCustomer) {
     return (
       <div className="bg-white p-4 rounded-2xl shadow-sm border-2 border-blue-100 flex justify-between items-center">
-        <div>
+        <div className="flex-grow">
           <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Selected Customer</p>
-          <p className="text-xl font-black text-blue-700">{selectedCustomer.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-xl font-black text-blue-700">{selectedCustomer.name}</p>
+            {selectedCustomer.phone_numbers && (
+              <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold">
+                {selectedCustomer.phone_numbers}
+              </span>
+            )}
+          </div>
+          {selectedCustomer.address && (
+            <p className="text-[10px] text-gray-400 font-medium truncate max-w-xs">{selectedCustomer.address}</p>
+          )}
         </div>
-        <button
-          onClick={handleClear}
-          className="p-2 text-gray-400 hover:text-red-500 bg-gray-50 hover:bg-red-50 rounded-full transition-all"
-        >
-          <X size={20} />
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={(e) => onEdit(e, selectedCustomer)}
+            className="p-2 text-gray-400 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 rounded-full transition-all"
+            title="Edit Customer"
+          >
+            <Pencil size={20} />
+          </button>
+          <button
+            onClick={handleClear}
+            className="p-2 text-gray-400 hover:text-red-500 bg-gray-50 hover:bg-red-50 rounded-full transition-all"
+            title="Clear Selection"
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
     );
   }

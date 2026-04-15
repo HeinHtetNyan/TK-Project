@@ -19,6 +19,7 @@ class Customer(SQLModel, table=True):
     client_id: Optional[str] = Field(default=None, unique=True, index=True)
     name: str = Field(index=True)
     phone_numbers: Optional[str] = Field(default=None) # Comma-separated phone numbers
+    address: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=get_yangon_now)
 
     vouchers: List["Voucher"] = Relationship(back_populates="customer")

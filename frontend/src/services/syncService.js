@@ -262,6 +262,7 @@ export function enrichCustomer(serverCustomer) {
     ...serverCustomer,
     client_id: `server_${serverCustomer.id}`,
     server_id: serverCustomer.id,
+    address: serverCustomer.address ?? null,
     sync_status: 'synced',
   };
 }
@@ -277,6 +278,7 @@ export async function cacheCustomers(serverCustomers) {
     server_id: c.id,
     name: c.name,
     phone_numbers: c.phone_numbers ?? null,
+    address: c.address ?? null,
     created_at: c.created_at,
     sync_status: 'synced',
   }));
@@ -295,6 +297,7 @@ export async function loadCachedCustomers() {
     server_id: r.server_id,
     name: r.name,
     phone_numbers: r.phone_numbers,
+    address: r.address,
     created_at: r.created_at,
     sync_status: r.sync_status,
   }));
