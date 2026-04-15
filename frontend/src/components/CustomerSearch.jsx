@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, UserPlus, X } from 'lucide-react';
 import { customerService } from '../services/api';
+import db from '../lib/db';
 
 const CustomerSearch = ({ onSelect, onAdd, selectedCustomer }) => {
   const [query, setQuery] = useState('');
@@ -19,28 +20,38 @@ const CustomerSearch = ({ onSelect, onAdd, selectedCustomer }) => {
   }, []);
 
   useEffect(() => {
-    if (query.trim().length > 0) {
-      const fetchCustomers = async () => {
-        try {
-          const response = await customerService.search(query);
-          setResults(response.data);
-          setShowResults(true);
-        } catch (error) {
-          console.error('Error searching customers:', error);
-        }
-      };
-      const timeoutId = setTimeout(fetchCustomers, 300);
-      return () => clearTimeout(timeoutId);
+    if (query.trim().length === 0) {
+      setResults([]);
+      setShowResults(false);
+      return;
     }
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const response = await customerService.search(query);
+        setResults(response.data);
+        setShowResults(true);
+      } catch (_) {
+        // API unavailable (offline or tunnel down) — search IndexedDB
+        try {
+          const lower = query.toLowerCase();
+          const cached = await db.customers
+            .filter(c => c.name.toLowerCase().includes(lower))
+            .limit(20)
+            .toArray();
+          setResults(cached);
+          setShowResults(true);
+        } catch (__) {
+          setResults([]);
+        }
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
   }, [query]);
 
   const handleQueryChange = (e) => {
-    const val = e.target.value;
-    setQuery(val);
-    if (val.trim().length === 0) {
-      setResults([]);
-      setShowResults(false);
-    }
+    setQuery(e.target.value);
   };
 
   const handleSelect = (customer) => {
@@ -59,14 +70,14 @@ const CustomerSearch = ({ onSelect, onAdd, selectedCustomer }) => {
 
   if (selectedCustomer) {
     return (
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200 flex justify-between items-center">
+      <div className="bg-white p-4 rounded-2xl shadow-sm border-2 border-blue-100 flex justify-between items-center">
         <div>
-          <p className="text-sm text-gray-500 font-medium">Selected Customer</p>
-          <p className="text-xl font-bold text-blue-700">{selectedCustomer.name}</p>
+          <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Selected Customer</p>
+          <p className="text-xl font-black text-blue-700">{selectedCustomer.name}</p>
         </div>
         <button
           onClick={handleClear}
-          className="p-2 text-gray-400 hover:text-red-500 bg-gray-50 rounded-full"
+          className="p-2 text-gray-400 hover:text-red-500 bg-gray-50 hover:bg-red-50 rounded-full transition-all"
         >
           <X size={20} />
         </button>
@@ -80,36 +91,44 @@ const CustomerSearch = ({ onSelect, onAdd, selectedCustomer }) => {
         <div className="relative flex-grow">
           <input
             type="text"
-            className="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-lg"
-            placeholder="Search Customer Name..."
+            className="w-full pl-11 pr-4 py-4 bg-white border-2 border-gray-100 rounded-2xl focus:border-blue-500 outline-none transition-all text-lg font-bold"
+            placeholder="Search customer name..."
             value={query}
             onChange={handleQueryChange}
             onFocus={() => query && setShowResults(true)}
           />
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
         </div>
         <button
           onClick={onAdd}
-          className="bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors flex items-center justify-center gap-2"
+          className="bg-blue-600 text-white px-5 rounded-2xl hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 font-black shadow-md shadow-blue-100"
         >
           <UserPlus size={20} />
-          <span className="hidden sm:inline">Add</span>
+          <span className="hidden sm:inline text-sm uppercase tracking-wide">Add</span>
         </button>
       </div>
 
       {showResults && results.length > 0 && (
-        <ul className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto overflow-x-hidden animate-in fade-in zoom-in duration-200">
+        <ul className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-100 rounded-2xl shadow-xl max-h-64 overflow-y-auto animate-in fade-in zoom-in duration-200">
           {results.map((customer) => (
             <li
-              key={customer.id}
-              className="p-4 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 border-gray-100 transition-colors flex flex-col"
+              key={customer.client_id || customer.id}
+              className="p-4 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 border-gray-50 transition-colors flex justify-between items-center"
               onClick={() => handleSelect(customer)}
             >
-              <span className="font-bold text-gray-800 text-lg">{customer.name}</span>
-              <span className="text-xs text-gray-400">ID: {customer.id}</span>
+              <span className="font-black text-gray-800 text-lg">{customer.name}</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase">
+                {customer.server_id ? `ID: ${customer.server_id}` : customer.id ? `ID: ${customer.id}` : 'Local'}
+              </span>
             </li>
           ))}
         </ul>
+      )}
+
+      {showResults && results.length === 0 && query.trim().length > 0 && (
+        <div className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-100 rounded-2xl shadow-xl p-4 text-center text-gray-400 font-bold text-sm animate-in fade-in duration-200">
+          No customers found for "{query}"
+        </div>
       )}
     </div>
   );

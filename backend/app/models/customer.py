@@ -15,6 +15,8 @@ def get_yangon_now():
 
 class Customer(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    # UUID sent by the client for idempotent offline sync. Unique when present.
+    client_id: Optional[str] = Field(default=None, unique=True, index=True)
     name: str = Field(index=True)
     phone_numbers: Optional[str] = Field(default=None) # Comma-separated phone numbers
     created_at: datetime = Field(default_factory=get_yangon_now)

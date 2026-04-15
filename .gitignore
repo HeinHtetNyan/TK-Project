@@ -2,6 +2,9 @@
 .env
 backend/.env
 
+# Android — machine-specific config (SDK path + tunnel URL)
+android/local.properties
+
 # Python
 __pycache__/
 *.py[cod]

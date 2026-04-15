@@ -21,12 +21,17 @@ app = FastAPI(
 )
 
 # CORS Middleware
+# Set ALLOWED_ORIGINS in .env as a comma-separated list, e.g.:
+#   ALLOWED_ORIGINS=http://localhost:5173,https://yourtunnel.trycloudflare.com
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173")
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For development, allow all. You can restrict to ["http://localhost:5173"]
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 @app.on_event("startup")

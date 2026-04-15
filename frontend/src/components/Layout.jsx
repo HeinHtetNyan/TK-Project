@@ -1,10 +1,12 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, FileText, CreditCard, History, BarChart3, Users, LogOut, User as UserIcon, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import SyncStatus from './SyncStatus';
 
 const Layout = ({ children }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, logout, isAdmin } = useAuth();
 
   const navItems = [
@@ -25,7 +27,6 @@ const Layout = ({ children }) => {
           <div className="w-16 h-10 bg-white rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center shadow-inner">
             <img src="/TK.jpeg" alt="TK Logo" className="w-full h-full object-cover" onError={(e) => e.target.style.display='none'} />
           </div>
-
           <h1 className="text-lg md:text-xl font-black tracking-tight leading-tight uppercase">TK Plastic Press</h1>
         </div>
 
@@ -42,22 +43,27 @@ const Layout = ({ children }) => {
           </div>
         )}
 
+        {/* Sync status pill (Desktop — inside sidebar) */}
+        <div className="hidden md:flex mb-3">
+          <SyncStatus />
+        </div>
+
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex flex-col gap-2 mt-4 flex-grow">
+        <nav className="hidden md:flex flex-col gap-2 mt-2 flex-grow">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
             return (
-              <Link
+              <button
                 key={item.path}
-                to={item.path}
-                className={`flex items-center gap-3 p-4 rounded-2xl transition-all font-black uppercase text-xs tracking-widest ${
+                onClick={() => navigate(item.path, { replace: item.path === '/', state: null })}
+                className={`flex items-center gap-3 p-4 rounded-2xl transition-all font-black uppercase text-xs tracking-widest text-left ${
                   isActive ? 'bg-white text-blue-600 shadow-lg scale-105' : 'text-blue-100 hover:bg-blue-500'
                 }`}
               >
                 <Icon size={20} />
                 {item.label}
-              </Link>
+              </button>
             );
           })}
         </nav>
@@ -71,9 +77,10 @@ const Layout = ({ children }) => {
           Logout
         </button>
 
-        {/* Mobile Header Right */}
-        <div className="md:hidden flex items-center ml-auto gap-4">
+        {/* Mobile Header Right — username + sync pill + logout */}
+        <div className="md:hidden flex items-center ml-auto gap-3">
           {user && <span className="text-xs font-bold uppercase">{user.username}</span>}
+          <SyncStatus />
           <button onClick={logout} className="p-2 bg-blue-700 rounded-lg">
             <LogOut size={18} />
           </button>
@@ -87,22 +94,22 @@ const Layout = ({ children }) => {
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation - Simplified */}
+      {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around p-2 z-20 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
           return (
-            <Link
+            <button
               key={item.path}
-              to={item.path}
+              onClick={() => navigate(item.path, { replace: item.path === '/', state: null })}
               className={`flex flex-col items-center py-1 px-4 rounded-xl transition-all ${
                 isActive ? 'text-blue-600 scale-110' : 'text-gray-400'
               }`}
             >
               <Icon size={24} />
               <span className="text-[10px] mt-1 font-black uppercase tracking-tighter">{item.label}</span>
-            </Link>
+            </button>
           );
         })}
       </nav>

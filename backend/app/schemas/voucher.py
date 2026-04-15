@@ -47,9 +47,11 @@ class VoucherBase(BaseModel):
 
 class VoucherCreate(VoucherBase):
     items: List[ItemCreate]
+    client_id: Optional[str] = None
 
 class VoucherRead(VoucherBase):
     id: int
+    client_id: Optional[str] = None
     customer_name: Optional[str] = None
     customer_balance: Optional[float] = None
     items_total: float

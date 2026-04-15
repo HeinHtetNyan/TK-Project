@@ -28,10 +28,11 @@ class PaymentBase(BaseModel):
         return v
 
 class PaymentCreate(PaymentBase):
-    pass
+    client_id: Optional[str] = None
 
 class PaymentRead(PaymentBase):
     id: int
+    client_id: Optional[str] = None
     created_at: datetime
 
     class Config:

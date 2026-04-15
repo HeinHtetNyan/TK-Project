@@ -12,10 +12,18 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 
 @router.post("/", response_model=CustomerRead)
 def create_customer(
-    customer: CustomerCreate, 
+    customer: CustomerCreate,
     session: Session = Depends(get_session),
     current_user: User = Depends(require_staff_or_admin)
 ):
+    # Idempotency: if a client_id was provided and already exists, return existing record
+    if customer.client_id:
+        existing = session.exec(
+            select(Customer).where(Customer.client_id == customer.client_id)
+        ).first()
+        if existing:
+            return existing
+
     db_customer = Customer.model_validate(customer)
     session.add(db_customer)
     session.commit()
@@ -32,7 +40,7 @@ def list_customers(
 
 @router.get("/search", response_model=List[CustomerRead])
 def search_customers(
-    name: str = Query(..., min_length=1), 
+    name: str = Query(..., min_length=1, max_length=255),
     session: Session = Depends(get_session),
     current_user: User = Depends(require_staff_or_admin)
 ):
@@ -42,14 +50,14 @@ def search_customers(
 
 @router.get("/{customer_id}/balance", response_model=CustomerBalance)
 def get_customer_balance(
-    customer_id: int, 
+    customer_id: int,
     session: Session = Depends(get_session),
     current_user: User = Depends(require_staff_or_admin)
 ):
     customer = session.get(Customer, customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    
+
     balance = calculate_customer_balance(session, customer_id)
     return CustomerBalance(
         customer_id=customer.id,

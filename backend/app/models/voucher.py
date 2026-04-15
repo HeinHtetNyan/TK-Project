@@ -10,6 +10,8 @@ if TYPE_CHECKING:
 
 class Voucher(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    # UUID sent by the client for idempotent offline sync.
+    client_id: Optional[str] = Field(default=None, unique=True, index=True)
     customer_id: int = Field(foreign_key="customer.id")
     voucher_number: str = Field(unique=True, index=True)
     voucher_date: date = Field(default_factory=get_yangon_date)

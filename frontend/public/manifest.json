@@ -1,0 +1,24 @@
+{
+  "name": "TK Plastic Press POS",
+  "short_name": "TK POS",
+  "description": "TK Plastic Press — Point of Sale System with offline support",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/TK transparent-Photoroom.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/TK transparent-Photoroom.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

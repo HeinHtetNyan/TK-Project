@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FilePlus, CreditCard, History, UserPlus, Users, Search as SearchIcon } from 'lucide-react';
 import Layout from '../components/Layout';
@@ -7,85 +7,204 @@ import CustomerSearch from '../components/CustomerSearch';
 import BalanceDisplay from '../components/BalanceDisplay';
 import Dashboard from '../components/Dashboard';
 import { customerService, analyticsService } from '../services/api';
+import {
+  enrichCustomer,
+  cacheCustomers,
+  loadCachedCustomers,
+  cacheBalance,
+  getOfflineBalance,
+} from '../services/syncService';
+import db, { generateUUID } from '../lib/db';
 import { useAuth } from '../hooks/useAuth';
 import { Trash2 } from 'lucide-react';
 
 const Home = () => {
   const { isAdmin } = useAuth();
   const location = useLocation();
-  const [selectedCustomer, setSelectedCustomer] = useState(location.state?.customer || null);
+
+  const [selectedCustomer, setSelectedCustomer] = useState(
+    location.state?.customer || null
+  );
+  const isInitialMount = useRef(true);
   const [balance, setBalance] = useState(0);
+  const [balanceIsEstimate, setBalanceIsEstimate] = useState(false);
   const [allCustomers, setAllCustomers] = useState([]);
   const [showAll, setShowAll] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [dashboardData, setDashboardData] = useState(null);
-  
+
   const navigate = useNavigate();
 
-  const fetchDashboardData = async () => {
+  // ------------------------------------------------------------------
+  // Customer loading
+  // Rule: always show API data first; Dexie caching is best-effort.
+  // ------------------------------------------------------------------
+  const fetchAllCustomers = useCallback(async () => {
+    try {
+      const response = await customerService.list();
+      const enriched = response.data.map(enrichCustomer);
+      // Show data IMMEDIATELY — never wait for IndexedDB
+      setAllCustomers(enriched.sort((a, b) => a.name.localeCompare(b.name)));
+      // Cache in background; if Dexie fails it must not affect the UI
+      cacheCustomers(response.data).catch(() => {});
+    } catch (_) {
+      // API unavailable (offline) — load from IndexedDB fallback
+      try {
+        const cached = await loadCachedCustomers();
+        setAllCustomers(cached.sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (__) {
+        setAllCustomers([]);
+      }
+    }
+  }, []);
+
+  // ------------------------------------------------------------------
+  // Balance
+  // ------------------------------------------------------------------
+  const fetchBalance = useCallback(async (customer) => {
+    if (!customer) return;
+    const serverId = customer.server_id ?? customer.id;
+    if (typeof serverId !== 'number') return;
+
+    try {
+      const response = await customerService.getBalance(serverId);
+      const bal = response.data.balance;
+      // Cache in background
+      try { cacheBalance(serverId, bal); } catch (_) {}
+      setBalance(bal);
+      setBalanceIsEstimate(false);
+    } catch (_) {
+      // Offline fallback
+      try {
+        const estimated = await getOfflineBalance(customer.client_id, serverId);
+        setBalance(estimated);
+        setBalanceIsEstimate(true);
+      } catch (__) {
+        setBalance(0);
+        setBalanceIsEstimate(true);
+      }
+    }
+  }, []);
+
+  const fetchDashboardData = useCallback(async () => {
     try {
       const response = await analyticsService.getDashboard();
       setDashboardData(response.data);
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    }
-  };
-
-  const fetchAllCustomers = async () => {
-    try {
-      const response = await customerService.list();
-      setAllCustomers(response.data.sort((a, b) => a.name.localeCompare(b.name)));
-    } catch (error) {
-      console.error('Error fetching customers:', error);
-    }
-  };
-
-  const fetchBalance = async (id) => {
-    try {
-      const response = await customerService.getBalance(id);
-      setBalance(response.data.balance);
-    } catch (error) {
-      console.error('Error fetching balance:', error);
-    }
-  };
+    } catch (_) {}
+  }, []);
 
   useEffect(() => {
     fetchAllCustomers();
     fetchDashboardData();
-  }, []);
+  }, [fetchAllCustomers, fetchDashboardData]);
+
+  // Reset customer selection whenever we navigate to Home.
+  // location.key changes on every navigation (including replace), so pressing
+  // the Home button from any page — or while already on Home — resets state.
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    setSelectedCustomer(location.state?.customer || null);
+    setBalance(0);
+    setBalanceIsEstimate(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   useEffect(() => {
     if (selectedCustomer) {
-      fetchBalance(selectedCustomer.id);
+      fetchBalance(selectedCustomer);
     } else {
       setBalance(0);
+      setBalanceIsEstimate(false);
     }
-  }, [selectedCustomer]);
+  }, [selectedCustomer, fetchBalance]);
 
+  // ------------------------------------------------------------------
+  // Customer creation
+  // ------------------------------------------------------------------
   const handleAddCustomer = async (e) => {
     e.preventDefault();
     if (!newCustomerName.trim()) return;
-    
-    try {
-      const response = await customerService.create({ name: newCustomerName });
-      setSelectedCustomer(response.data);
-      setShowAddModal(false);
-      setNewCustomerName('');
-      fetchAllCustomers(); // Refresh list
-    } catch (error) {
-      alert('Error creating customer');
-      console.error(error);
+
+    if (navigator.onLine) {
+      try {
+        const response = await customerService.create({ name: newCustomerName });
+        const enriched = enrichCustomer(response.data);
+        // Cache in background
+        db.customers.put({
+          client_id: enriched.client_id,
+          server_id: enriched.server_id,
+          name: enriched.name,
+          phone_numbers: enriched.phone_numbers ?? null,
+          created_at: enriched.created_at,
+          sync_status: 'synced',
+        }).catch(() => {});
+
+        setSelectedCustomer(enriched);
+        setShowAddModal(false);
+        setNewCustomerName('');
+        fetchAllCustomers();
+      } catch (error) {
+        alert(error.response?.data?.detail || 'Error creating customer');
+      }
+    } else {
+      // Offline — save locally and queue
+      const clientId = generateUUID();
+      const now = new Date().toISOString();
+
+      try {
+        await db.customers.add({
+          client_id: clientId,
+          server_id: null,
+          name: newCustomerName.trim(),
+          phone_numbers: null,
+          created_at: now,
+          sync_status: 'pending',
+        });
+        await db.sync_queue.add({
+          client_id: clientId,
+          type: 'customer',
+          action: 'create',
+          payload: { name: newCustomerName.trim() },
+          status: 'pending',
+          retries: 0,
+          depends_on_client_id: null,
+          created_at: now,
+        });
+
+        const enriched = {
+          id: clientId,
+          client_id: clientId,
+          server_id: null,
+          name: newCustomerName.trim(),
+          phone_numbers: null,
+          created_at: now,
+          sync_status: 'pending',
+        };
+
+        setSelectedCustomer(enriched);
+        setShowAddModal(false);
+        setNewCustomerName('');
+        setAllCustomers(prev =>
+          [...prev, enriched].sort((a, b) => a.name.localeCompare(b.name))
+        );
+        alert('Customer saved offline. Will sync when internet is available.');
+      } catch (err) {
+        alert('Error saving customer: ' + err.message);
+      }
     }
   };
 
   const handleDeleteCustomer = async (e, id) => {
     e.stopPropagation();
     if (!window.confirm('Are you sure you want to delete this customer? This will also affect their history.')) return;
-    
+
     try {
       await customerService.delete(id);
-      if (selectedCustomer?.id === id) {
+      if (selectedCustomer?.id === id || selectedCustomer?.server_id === id) {
         setSelectedCustomer(null);
       }
       fetchAllCustomers();
@@ -106,7 +225,7 @@ const Home = () => {
         <section className="space-y-4">
           <div className="flex justify-between items-end">
             <h2 className="text-2xl font-black text-gray-800">Select Customer</h2>
-            <button 
+            <button
               onClick={() => setShowAll(!showAll)}
               className="text-blue-600 font-bold text-xs uppercase flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-all"
             >
@@ -116,47 +235,59 @@ const Home = () => {
           </div>
 
           {!showAll ? (
-            <CustomerSearch 
-              onSelect={setSelectedCustomer} 
+            <CustomerSearch
+              onSelect={(c) => setSelectedCustomer(c ? enrichCustomer(c) : null)}
               onAdd={() => setShowAddModal(true)}
               selectedCustomer={selectedCustomer}
             />
           ) : (
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-2 space-y-2 animate-in fade-in zoom-in duration-200">
-               <div className="max-h-64 overflow-y-auto px-2 space-y-1">
-                  {allCustomers.length > 0 ? allCustomers.map(c => (
-                    <div
-                      key={c.id}
-                      onClick={() => { setSelectedCustomer(c); setShowAll(false); }}
-                      className={`w-full text-left p-4 rounded-2xl transition-all flex justify-between items-center cursor-pointer ${
-                        selectedCustomer?.id === c.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-blue-50 text-gray-700 font-bold border-b border-gray-50 last:border-0'
-                      }`}
-                    >
-                      <span className="text-lg">{c.name}</span>
-                      <div className="flex items-center gap-3">
-                        <span className={`text-[10px] uppercase font-black ${selectedCustomer?.id === c.id ? 'text-blue-200' : 'text-gray-400'}`}>ID: {c.id}</span>
-                        {isAdmin() && (
-                          <button
-                            onClick={(e) => handleDeleteCustomer(e, c.id)}
-                            className={`p-1.5 rounded-lg transition-all ${
-                              selectedCustomer?.id === c.id ? 'hover:bg-blue-700 text-blue-200 hover:text-white' : 'hover:bg-red-50 text-gray-300 hover:text-red-500'
-                            }`}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
-                      </div>
+              <div className="max-h-64 overflow-y-auto px-2 space-y-1">
+                {allCustomers.length > 0 ? allCustomers.map(c => (
+                  <div
+                    key={c.client_id || c.id}
+                    onClick={() => { setSelectedCustomer(c); setShowAll(false); }}
+                    className={`w-full text-left p-4 rounded-2xl transition-all flex justify-between items-center cursor-pointer ${
+                      (selectedCustomer?.client_id === c.client_id || selectedCustomer?.id === c.id)
+                        ? 'bg-blue-600 text-white shadow-lg'
+                        : 'hover:bg-blue-50 text-gray-700 font-bold border-b border-gray-50 last:border-0'
+                    }`}
+                  >
+                    <span className="text-lg">{c.name}</span>
+                    <div className="flex items-center gap-3">
+                      {c.sync_status === 'pending' && (
+                        <span className="text-[9px] bg-yellow-400 text-yellow-900 px-1.5 py-0.5 rounded-full font-black uppercase">Offline</span>
+                      )}
+                      <span className={`text-[10px] uppercase font-black ${
+                        (selectedCustomer?.client_id === c.client_id || selectedCustomer?.id === c.id)
+                          ? 'text-blue-200' : 'text-gray-400'
+                      }`}>
+                        {c.server_id ? `ID: ${c.server_id}` : 'Local'}
+                      </span>
+                      {isAdmin() && c.server_id && (
+                        <button
+                          onClick={(e) => handleDeleteCustomer(e, c.server_id)}
+                          className={`p-1.5 rounded-lg transition-all ${
+                            (selectedCustomer?.client_id === c.client_id || selectedCustomer?.id === c.id)
+                              ? 'hover:bg-blue-700 text-blue-200 hover:text-white'
+                              : 'hover:bg-red-50 text-gray-300 hover:text-red-500'
+                          }`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
-                  )) : (
-                    <p className="text-center py-8 text-gray-400 font-bold">No customers created yet</p>
-                  )}
-               </div>
-               <button 
-                 onClick={() => setShowAddModal(true)}
-                 className="w-full py-4 bg-gray-50 text-blue-600 rounded-2xl font-black uppercase text-xs hover:bg-blue-50 transition-colors border-2 border-dashed border-blue-100"
-               >
-                 + Add New Customer
-               </button>
+                  </div>
+                )) : (
+                  <p className="text-center py-8 text-gray-400 font-bold">No customers found</p>
+                )}
+              </div>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="w-full py-4 bg-gray-50 text-blue-600 rounded-2xl font-black uppercase text-xs hover:bg-blue-50 transition-colors border-2 border-dashed border-blue-100"
+              >
+                + Add New Customer
+              </button>
             </div>
           )}
         </section>
@@ -164,6 +295,11 @@ const Home = () => {
         {selectedCustomer && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <BalanceDisplay balance={balance} />
+            {balanceIsEstimate && (
+              <p className="text-center text-[11px] text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2 font-bold">
+                Estimated balance (offline) — actual balance may differ
+              </p>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {actions.map((action) => (
@@ -183,7 +319,7 @@ const Home = () => {
         {!selectedCustomer && !showAll && (
           <div className="space-y-8 animate-in fade-in duration-700">
             <Dashboard data={dashboardData} />
-            
+
             <div className="py-12 text-center text-gray-400 bg-white rounded-3xl border-2 border-dashed border-gray-200">
               <UserPlus size={48} className="mx-auto mb-2 opacity-20" />
               <p className="text-lg font-bold">Search or click 'Browse All Customers' to begin</p>
@@ -195,6 +331,11 @@ const Home = () => {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 animate-in fade-in">
             <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in duration-200">
               <h3 className="text-2xl font-black mb-6 text-gray-800">New Customer</h3>
+              {!navigator.onLine && (
+                <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2 text-[11px] font-bold text-yellow-700">
+                  You are offline. Customer will sync when internet is available.
+                </div>
+              )}
               <form onSubmit={handleAddCustomer} className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Customer Name</label>

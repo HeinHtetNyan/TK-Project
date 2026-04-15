@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Save as SaveIcon, ArrowLeft as ArrowLeftIcon, CreditCard as CreditCardIcon, Smartphone, Landmark, Banknote } from 'lucide-react';
+import { Save as SaveIcon, ArrowLeft as ArrowLeftIcon, CreditCard as CreditCardIcon, Smartphone, Landmark, Banknote, WifiOff } from 'lucide-react';
 import Layout from '../components/Layout';
 import DropdownDatePicker from '../components/DropdownDatePicker';
 import { customerService, paymentService } from '../services/api';
+import { cacheBalance, getOfflineBalance } from '../services/syncService';
 import BalanceDisplay from '../components/BalanceDisplay';
+import db, { generateUUID } from '../lib/db';
 
 const Payment = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [customer] = useState(location.state?.customer || null);
   const [balance, setBalance] = useState(0);
-  
+  const [balanceIsEstimate, setBalanceIsEstimate] = useState(false);
+
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('CASH');
@@ -22,46 +25,131 @@ const Payment = () => {
   useEffect(() => {
     if (!customer) {
       navigate('/');
-    } else {
-      fetchBalance(customer.id);
+      return;
     }
-  }, [customer, navigate]);
+    fetchBalance();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer]);
 
-  const fetchBalance = async (id) => {
+  const fetchBalance = async () => {
+    const serverId = customer.server_id ?? (typeof customer.id === 'number' ? customer.id : null);
+
+    if (navigator.onLine && typeof serverId === 'number') {
+      try {
+        const response = await customerService.getBalance(serverId);
+        const bal = response.data.balance;
+        try { cacheBalance(serverId, bal); } catch (_) {}
+        setBalance(bal);
+        setBalanceIsEstimate(false);
+        return;
+      } catch (_) {}
+    }
+
+    // Offline fallback — best effort
     try {
-      const response = await customerService.getBalance(id);
-      setBalance(response.data.balance);
-    } catch (error) {
-      console.error(error);
+      const estimated = await getOfflineBalance(customer.client_id, serverId);
+      setBalance(estimated);
+      setBalanceIsEstimate(true);
+    } catch (_) {
+      setBalance(0);
+      setBalanceIsEstimate(true);
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!amount || parseFloat(amount) <= 0) return alert('Enter a valid amount');
-    
-    setLoading(true);
-    try {
-      const paymentData = {
-        customer_id: customer.id,
-        amount_paid: parseFloat(amount),
-        payment_method: paymentMethod,
-        payment_date: paymentDate,
-        note: note
-      };
 
-      if (isBulk) {
-        await paymentService.createBulk(paymentData);
-      } else {
-        await paymentService.create(paymentData);
+    setLoading(true);
+
+    const clientId = generateUUID();
+    const now = new Date().toISOString();
+    const paid = parseFloat(amount);
+    const serverId = customer.server_id ?? (typeof customer.id === 'number' ? customer.id : null);
+
+    const apiPayload = {
+      customer_id: serverId,
+      amount_paid: paid,
+      payment_method: paymentMethod,
+      payment_date: paymentDate,
+      note: note,
+      client_id: clientId,
+    };
+
+    // ── ONLINE PATH: call API first; IndexedDB is best-effort ──────────
+    if (navigator.onLine && serverId) {
+      try {
+        if (isBulk) {
+          await paymentService.createBulk(apiPayload);
+        } else {
+          await paymentService.create(apiPayload);
+        }
+
+        // Save to IndexedDB in background
+        db.payments.add({
+          client_id: clientId,
+          server_id: null,
+          customer_client_id: customer.client_id ?? `server_${serverId}`,
+          customer_server_id: serverId,
+          amount_paid: paid,
+          payment_method: paymentMethod,
+          payment_date: paymentDate,
+          note: note,
+          is_bulk: isBulk,
+          sync_status: 'synced',
+          created_at: now,
+        }).catch(() => {});
+
+        alert('Payment Saved Successfully!');
+        setLoading(false);
+        navigate('/', { state: { customer } });
+        return;
+      } catch (apiErr) {
+        // Server returned a structured error — stop here
+        if (apiErr.response) {
+          setLoading(false);
+          return alert(apiErr.response.data?.detail || 'Error saving payment. Please try again.');
+        }
+        // Network error (tunnel down, server unreachable) — fall through to offline save
+        console.warn('[Payment] API unreachable, saving offline...');
       }
-      alert('Payment Saved Successfully!');
-      navigate('/', { state: { customer: customer } });
-    } catch (error) {
-      alert('Error saving payment');
-      console.error(error);
-    } finally {
+    }
+
+    // ── OFFLINE PATH: IndexedDB is required ────────────────────────────
+    try {
+      // Wrap both writes in one transaction — either both succeed or neither does
+      await db.transaction('rw', db.payments, db.sync_queue, async () => {
+        await db.payments.add({
+          client_id: clientId,
+          server_id: null,
+          customer_client_id: customer.client_id ?? `server_${serverId}`,
+          customer_server_id: serverId,
+          amount_paid: paid,
+          payment_method: paymentMethod,
+          payment_date: paymentDate,
+          note: note,
+          is_bulk: isBulk,
+          sync_status: 'pending',
+          created_at: now,
+        });
+        await db.sync_queue.add({
+          client_id: clientId,
+          type: 'payment',
+          action: 'create',
+          payload: { ...apiPayload, is_bulk: isBulk },
+          status: 'pending',
+          retries: 0,
+          depends_on_client_id: serverId ? null : (customer.client_id ?? null),
+          created_at: now,
+        });
+      });
+
+      alert('Saved offline. Will sync automatically when internet is available.');
       setLoading(false);
+      navigate('/', { state: { customer } });
+    } catch (offlineErr) {
+      setLoading(false);
+      alert('Could not save. Please try again.\n' + offlineErr.message);
     }
   };
 
@@ -81,6 +169,13 @@ const Payment = () => {
           <h2 className="text-2xl font-black text-gray-800">Add Payment</h2>
         </header>
 
+        {!navigator.onLine && (
+          <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-bold px-4 py-3 rounded-xl">
+            <WifiOff size={14} />
+            Offline — payment will be saved locally and synced when internet returns.
+          </div>
+        )}
+
         {customer && (
           <div className="space-y-6">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
@@ -88,16 +183,14 @@ const Payment = () => {
               <p className="text-xl font-black text-blue-600 truncate">{customer.name}</p>
             </div>
 
-            <BalanceDisplay balance={balance} label="Current Debt" />
+            <BalanceDisplay balance={balance} label={balanceIsEstimate ? 'Current Debt (est.)' : 'Current Debt'} />
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-6">
                 <div className="space-y-2">
                   <label className="text-sm font-black text-gray-600 uppercase px-1">Payment Amount</label>
                   <input
-                    autoFocus
-                    required
-                    type="number"
+                    autoFocus required type="number" min="1" step="1"
                     className="w-full p-4 bg-green-50 border-2 border-green-100 rounded-2xl outline-none focus:border-green-500 transition-all text-3xl font-black text-green-700 text-center"
                     placeholder="0"
                     value={amount}
@@ -106,10 +199,10 @@ const Payment = () => {
                 </div>
 
                 <div className="grid grid-cols-1 gap-4">
-                  <DropdownDatePicker 
-                    label="Payment Date" 
-                    value={paymentDate} 
-                    onChange={setPaymentDate} 
+                  <DropdownDatePicker
+                    label="Payment Date"
+                    value={paymentDate}
+                    onChange={setPaymentDate}
                   />
 
                   <div className="flex items-center justify-between bg-blue-50 p-4 rounded-2xl border-2 border-blue-100">
@@ -120,15 +213,9 @@ const Payment = () => {
                     <button
                       type="button"
                       onClick={() => setIsBulk(!isBulk)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                        isBulk ? 'bg-blue-600' : 'bg-gray-200'
-                      }`}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isBulk ? 'bg-blue-600' : 'bg-gray-200'}`}
                     >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          isBulk ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isBulk ? 'translate-x-6' : 'translate-x-1'}`} />
                     </button>
                   </div>
 
@@ -141,8 +228,8 @@ const Payment = () => {
                           type="button"
                           onClick={() => setPaymentMethod(m.id)}
                           className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all gap-1 ${
-                            paymentMethod === m.id 
-                              ? `${m.active} border-transparent shadow-md transform scale-105` 
+                            paymentMethod === m.id
+                              ? `${m.active} border-transparent shadow-md transform scale-105`
                               : `bg-white border-gray-100 text-gray-400 hover:border-gray-200`
                           }`}
                         >
@@ -152,7 +239,7 @@ const Payment = () => {
                       ))}
                     </div>
                   </div>
-                  
+
                   <div className="space-y-1">
                     <label className="text-sm font-bold text-gray-600 uppercase px-1">Note (Optional)</label>
                     <textarea
@@ -161,7 +248,7 @@ const Payment = () => {
                       placeholder="e.g. Cash payment, Bank transfer..."
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
-                    ></textarea>
+                    />
                   </div>
                 </div>
               </div>

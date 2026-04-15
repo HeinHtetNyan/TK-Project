@@ -1,0 +1,91 @@
+services:
+
+  # ── Nginx: serves the built frontend + proxies /api to backend ──────────────
+  nginx:
+    build:
+      context: .                         # project root — so COPY can reach nginx/nginx.conf
+      dockerfile: ./frontend/Dockerfile.prod
+    container_name: plastic_press_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"          # Only port exposed to the internet (via Cloudflare Tunnel)
+    depends_on:
+      - backend
+    networks:
+      - internal
+
+  # ── FastAPI backend ──────────────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    container_name: plastic_press_backend
+    restart: unless-stopped
+    # Port 8000 is NOT exposed externally — only reachable via nginx inside Docker
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - TZ=Asia/Yangon
+    env_file:
+      - .env
+    networks:
+      - internal
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: plastic_press_db
+    restart: unless-stopped
+    # Port 5432 is NOT exposed externally — database is internal only
+    expose:
+      - "5432"
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - TZ=Asia/Yangon
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  # ── Daily automated backups ──────────────────────────────────────────────────
+  db-backup:
+    image: prodrigestivill/postgres-backup-local
+    container_name: plastic_press_db_backup
+    restart: unless-stopped
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - SCHEDULE=@daily
+      - BACKUP_KEEP_DAYS=7
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=6
+      - HEALTHCHECK_PORT=8080
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+
+networks:
+  internal:
+    driver: bridge

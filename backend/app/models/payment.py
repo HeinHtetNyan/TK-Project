@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 
 class Payment(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    # UUID sent by the client for idempotent offline sync.
+    client_id: Optional[str] = Field(default=None, unique=True, index=True)
     customer_id: int = Field(foreign_key="customer.id")
     amount_paid: float = Field(ge=0)
     payment_method: Optional[PaymentMethod] = Field(default=None)

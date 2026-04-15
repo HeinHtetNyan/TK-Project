@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Save, ArrowLeft, Smartphone, Landmark, Banknote } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Smartphone, Landmark, Banknote, WifiOff } from 'lucide-react';
 import Layout from '../components/Layout';
 import DropdownDatePicker from '../components/DropdownDatePicker';
 import { customerService, voucherService } from '../services/api';
+import { cacheBalance, getOfflineBalance } from '../services/syncService';
+import db, { generateUUID } from '../lib/db';
 
 const Voucher = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [customer] = useState(location.state?.customer || null);
   const [balance, setBalance] = useState(0);
-  
+  const [balanceIsEstimate, setBalanceIsEstimate] = useState(false);
+
   const [voucherNumber, setVoucherNumber] = useState('');
   const [voucherDate, setVoucherDate] = useState(new Date().toLocaleDateString('en-GB').split('/').join('-'));
   const [items, setItems] = useState([{ lb: '', plastic_size: '', plastic_price: '', color: '', color_price: '', total_price: 0 }]);
@@ -22,30 +25,44 @@ const Voucher = () => {
   useEffect(() => {
     if (!customer) {
       navigate('/');
-    } else {
-      fetchBalance(customer.id);
+      return;
     }
-  }, [customer, navigate]);
+    fetchBalance();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer]);
 
-  const fetchBalance = async (id) => {
+  const fetchBalance = async () => {
+    const serverId = customer.server_id ?? customer.id;
+
+    if (navigator.onLine && typeof serverId === 'number') {
+      try {
+        const response = await customerService.getBalance(serverId);
+        const bal = response.data.balance;
+        try { cacheBalance(serverId, bal); } catch (_) {}
+        setBalance(bal);
+        setBalanceIsEstimate(false);
+        return;
+      } catch (_) {}
+    }
+
+    // Offline fallback — best effort
     try {
-      const response = await customerService.getBalance(id);
-      setBalance(response.data.balance);
-    } catch (error) {
-      console.error(error);
+      const estimated = await getOfflineBalance(customer.client_id, serverId);
+      setBalance(estimated);
+      setBalanceIsEstimate(true);
+    } catch (_) {
+      setBalance(0);
+      setBalanceIsEstimate(true);
     }
   };
 
   const handleItemChange = (index, field, value) => {
     const newItems = [...items];
     newItems[index][field] = value;
-
-    // Calculate item total
     const lb = parseFloat(newItems[index].lb) || 0;
     const pPrice = parseFloat(newItems[index].plastic_price) || 0;
     const cPrice = parseFloat(newItems[index].color_price) || 0;
     newItems[index].total_price = lb * (pPrice + cPrice);
-
     setItems(newItems);
   };
 
@@ -66,37 +83,106 @@ const Voucher = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!voucherNumber) return alert('Enter Voucher Number');
-    
-    setLoading(true);
-    try {
-      const voucherData = {
-        customer_id: customer.id,
-        voucher_number: voucherNumber,
-        voucher_date: voucherDate,
-        paid_amount: parseFloat(paidAmount) || 0,
-        payment_method: parseFloat(paidAmount) > 0 ? paymentMethod : null,
-        note: note,
-        items: items.map(item => ({
-          lb: parseFloat(item.lb),
-          plastic_size: item.plastic_size,
-          plastic_price: parseFloat(item.plastic_price) || 0,
-          color: item.color,
-          color_price: parseFloat(item.color_price) || 0
-        }))
-      };
 
-      await voucherService.create(voucherData);
-      alert('Voucher Saved Successfully!');
-      navigate('/', { state: { customer: customer } });
-    } catch (error) {
-      if (error.response?.data?.detail) {
-        alert(error.response.data.detail);
-      } else {
-        alert('Error saving voucher');
+    setLoading(true);
+
+    const clientId = generateUUID();
+    const now = new Date().toISOString();
+    const paid = parseFloat(paidAmount) || 0;
+    const serverId = customer.server_id ?? (typeof customer.id === 'number' ? customer.id : null);
+
+    const mappedItems = items.map(item => ({
+      lb: parseFloat(item.lb),
+      plastic_size: item.plastic_size,
+      plastic_price: parseFloat(item.plastic_price) || 0,
+      color: item.color,
+      color_price: parseFloat(item.color_price) || 0,
+    }));
+
+    const apiPayload = {
+      customer_id: serverId,
+      voucher_number: voucherNumber,
+      voucher_date: voucherDate,
+      paid_amount: paid,
+      payment_method: paid > 0 ? paymentMethod : null,
+      note: note,
+      items: mappedItems,
+      client_id: clientId,
+    };
+
+    // ── ONLINE PATH: call API first; IndexedDB is best-effort ──────────
+    if (navigator.onLine && serverId) {
+      try {
+        await voucherService.create(apiPayload);
+
+        // Save to IndexedDB in background (non-blocking, don't fail if Dexie broken)
+        db.vouchers.add({
+          client_id: clientId,
+          server_id: null,
+          customer_client_id: customer.client_id ?? `server_${serverId}`,
+          customer_server_id: serverId,
+          voucher_number: voucherNumber,
+          voucher_date: voucherDate,
+          items_total: itemsTotal,
+          paid_amount: paid,
+          items: mappedItems,
+          sync_status: 'synced',
+          created_at: now,
+        }).catch(() => {});
+
+        alert('Voucher Saved Successfully!');
+        setLoading(false);
+        navigate('/', { state: { customer } });
+        return;
+      } catch (apiErr) {
+        // Server returned a structured error (validation, duplicate, etc.) — stop here
+        if (apiErr.response) {
+          setLoading(false);
+          return alert(apiErr.response.data?.detail || 'Error saving voucher. Please try again.');
+        }
+        // Network error (tunnel down, server unreachable) — fall through to offline save
+        console.warn('[Voucher] API unreachable, saving offline...');
       }
-      console.error(error);
-    } finally {
+    }
+
+    // ── OFFLINE PATH: IndexedDB is required ────────────────────────────
+    try {
+      // Wrap both writes in one transaction — either both succeed or neither does
+      await db.transaction('rw', db.vouchers, db.sync_queue, async () => {
+        await db.vouchers.add({
+          client_id: clientId,
+          server_id: null,
+          customer_client_id: customer.client_id ?? `server_${serverId}`,
+          customer_server_id: serverId,
+          voucher_number: voucherNumber,
+          voucher_date: voucherDate,
+          items_total: itemsTotal,
+          paid_amount: paid,
+          payment_method: paid > 0 ? paymentMethod : null,
+          note: note,
+          items: mappedItems,
+          sync_status: 'pending',
+          created_at: now,
+          updated_at: now,
+        });
+        await db.sync_queue.add({
+          client_id: clientId,
+          type: 'voucher',
+          action: 'create',
+          payload: apiPayload,
+          status: 'pending',
+          retries: 0,
+          depends_on_client_id: serverId ? null : (customer.client_id ?? null),
+          created_at: now,
+        });
+      });
+
+      alert('Saved offline. Will sync automatically when internet is available.');
       setLoading(false);
+      navigate('/', { state: { customer } });
+    } catch (offlineErr) {
+      setLoading(false);
+      alert('Could not save. Please try again.\n' + offlineErr.message);
     }
   };
 
@@ -116,11 +202,20 @@ const Voucher = () => {
           <h2 className="text-2xl font-black text-gray-800">Create Voucher</h2>
         </header>
 
+        {!navigator.onLine && (
+          <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-bold px-4 py-3 rounded-xl">
+            <WifiOff size={14} />
+            Offline — voucher will be saved locally and synced when internet returns.
+          </div>
+        )}
+
         {customer && (
           <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex justify-between items-center">
             <span className="font-bold text-blue-800 text-lg">{customer.name}</span>
             <div className="text-right">
-              <span className="text-xs text-blue-600 uppercase font-bold block">Previous Balance</span>
+              <span className="text-xs text-blue-600 uppercase font-bold block">
+                Previous Balance{balanceIsEstimate ? ' (est.)' : ''}
+              </span>
               <span className="text-lg font-black text-blue-700">{balance.toLocaleString()} MMK</span>
             </div>
           </div>
@@ -139,10 +234,10 @@ const Voucher = () => {
                 onChange={(e) => setVoucherNumber(e.target.value)}
               />
             </div>
-            <DropdownDatePicker 
-              label="Voucher Date" 
-              value={voucherDate} 
-              onChange={setVoucherDate} 
+            <DropdownDatePicker
+              label="Voucher Date"
+              value={voucherDate}
+              onChange={setVoucherDate}
             />
           </div>
 
@@ -157,22 +252,20 @@ const Voucher = () => {
             {items.map((item, index) => (
               <div key={index} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 space-y-4 relative overflow-hidden">
                 <div className="flex justify-between items-center">
-                   <span className="bg-gray-100 px-3 py-1 rounded-full text-[10px] font-black text-gray-500 uppercase tracking-widest">Item {index + 1}</span>
-                   {items.length > 1 && (
-                     <button type="button" onClick={() => removeItem(index)} className="text-red-400 hover:text-red-600 transition-colors">
-                       <Trash2 size={18} />
-                     </button>
-                   )}
+                  <span className="bg-gray-100 px-3 py-1 rounded-full text-[10px] font-black text-gray-500 uppercase tracking-widest">Item {index + 1}</span>
+                  {items.length > 1 && (
+                    <button type="button" onClick={() => removeItem(index)} className="text-red-400 hover:text-red-600 transition-colors">
+                      <Trash2 size={18} />
+                    </button>
+                  )}
                 </div>
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                   <div className="space-y-1 sm:col-span-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase px-1 tracking-widest">Weight (LB)</label>
                     <input
                       autoFocus={index === items.length - 1}
-                      type="number"
-                      step="any"
-                      required
+                      type="number" step="any" required
                       className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold"
                       value={item.lb}
                       onChange={(e) => handleItemChange(index, 'lb', e.target.value)}
@@ -181,9 +274,7 @@ const Voucher = () => {
                   <div className="space-y-1 sm:col-span-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase px-1 tracking-widest">Size</label>
                     <input
-                      type="text"
-                      required
-                      placeholder="e.g. 10x15"
+                      type="text" required placeholder="e.g. 10x15"
                       className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold"
                       value={item.plastic_size}
                       onChange={(e) => handleItemChange(index, 'plastic_size', e.target.value)}
@@ -192,8 +283,7 @@ const Voucher = () => {
                   <div className="space-y-1 sm:col-span-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase px-1 tracking-widest">Plastic Price</label>
                     <input
-                      type="number"
-                      required
+                      type="number" required
                       className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold"
                       value={item.plastic_price}
                       onChange={(e) => handleItemChange(index, 'plastic_price', e.target.value)}
@@ -202,9 +292,7 @@ const Voucher = () => {
                   <div className="space-y-1 sm:col-span-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase px-1 tracking-widest">Color</label>
                     <input
-                      type="text"
-                      required
-                      placeholder="e.g. Blue"
+                      type="text" required placeholder="e.g. Blue"
                       className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold"
                       value={item.color}
                       onChange={(e) => handleItemChange(index, 'color', e.target.value)}
@@ -213,8 +301,7 @@ const Voucher = () => {
                   <div className="space-y-1 sm:col-span-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase px-1 tracking-widest">Color Price</label>
                     <input
-                      type="number"
-                      required
+                      type="number" required
                       className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold"
                       value={item.color_price}
                       onChange={(e) => handleItemChange(index, 'color_price', e.target.value)}
@@ -222,20 +309,19 @@ const Voucher = () => {
                   </div>
                 </div>
 
-                {/* Calculation Breakdown */}
                 <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                   <div className="text-[11px] font-bold text-gray-500">
-                      <span className="block uppercase text-[9px] mb-0.5 tracking-tighter">Plastic: {item.lb || 0} × {item.plastic_price || 0}</span>
-                      <div className="text-blue-600 font-black">{( (item.lb || 0) * (item.plastic_price || 0) ).toLocaleString()}</div>
-                   </div>
-                   <div className="text-[11px] font-bold text-gray-500">
-                      <span className="block uppercase text-[9px] mb-0.5 tracking-tighter">Color: {item.lb || 0} × {item.color_price || 0}</span>
-                      <div className="text-blue-600 font-black">{( (item.lb || 0) * (item.color_price || 0) ).toLocaleString()}</div>
-                   </div>
-                   <div className="text-right flex flex-col justify-center">
-                      <span className="text-[9px] font-black text-gray-400 uppercase block tracking-widest">Total</span>
-                      <span className="text-lg font-black text-blue-700">{(item.total_price || 0).toLocaleString()} <span className="text-xs">MMK</span></span>
-                   </div>
+                  <div className="text-[11px] font-bold text-gray-500">
+                    <span className="block uppercase text-[9px] mb-0.5 tracking-tighter">Plastic: {item.lb || 0} × {item.plastic_price || 0}</span>
+                    <div className="text-blue-600 font-black">{((item.lb || 0) * (item.plastic_price || 0)).toLocaleString()}</div>
+                  </div>
+                  <div className="text-[11px] font-bold text-gray-500">
+                    <span className="block uppercase text-[9px] mb-0.5 tracking-tighter">Color: {item.lb || 0} × {item.color_price || 0}</span>
+                    <div className="text-blue-600 font-black">{((item.lb || 0) * (item.color_price || 0)).toLocaleString()}</div>
+                  </div>
+                  <div className="text-right flex flex-col justify-center">
+                    <span className="text-[9px] font-black text-gray-400 uppercase block tracking-widest">Total</span>
+                    <span className="text-lg font-black text-blue-700">{(item.total_price || 0).toLocaleString()} <span className="text-xs">MMK</span></span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -249,12 +335,12 @@ const Voucher = () => {
               rows="2"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-            ></textarea>
+            />
           </div>
 
           <div className="bg-gray-800 p-6 rounded-3xl shadow-xl text-white space-y-4">
             <div className="flex justify-between items-center opacity-70">
-              <span className="font-bold">Previous Balance</span>
+              <span className="font-bold">Previous Balance{balanceIsEstimate ? ' (est.)' : ''}</span>
               <span className="font-bold">{balance.toLocaleString()} MMK</span>
             </div>
             <div className="flex justify-between items-center opacity-70">
@@ -278,7 +364,6 @@ const Voucher = () => {
                 onChange={(e) => setPaidAmount(e.target.value)}
               />
             </div>
-            
             <div className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl">
               <span className="font-bold text-gray-500 uppercase text-xs">Remaining Balance</span>
               <span className={`text-2xl font-black ${remainingBalance > 0 ? 'text-red-500' : 'text-green-500'}`}>
@@ -297,8 +382,8 @@ const Voucher = () => {
                     type="button"
                     onClick={() => setPaymentMethod(m.id)}
                     className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all gap-1 ${
-                      paymentMethod === m.id 
-                        ? `${m.active} border-transparent shadow-md transform scale-105` 
+                      paymentMethod === m.id
+                        ? `${m.active} border-transparent shadow-md transform scale-105`
                         : `bg-white border-gray-100 text-gray-400 hover:border-gray-200`
                     }`}
                   >

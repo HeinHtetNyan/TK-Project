@@ -7,7 +7,7 @@ class CustomerBase(BaseModel):
     phone_numbers: Optional[str] = None
 
 class CustomerCreate(CustomerBase):
-    pass
+    client_id: Optional[str] = None
 
 class CustomerUpdate(BaseModel):
     name: Optional[str] = None
@@ -15,6 +15,7 @@ class CustomerUpdate(BaseModel):
 
 class CustomerRead(CustomerBase):
     id: int
+    client_id: Optional[str] = None
     created_at: datetime
 
     class Config:

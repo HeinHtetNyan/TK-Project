@@ -5,7 +5,7 @@ from app.services.balance import calculate_customer_balance
 from app.models.customer import get_yangon_date
 from app.services.audit import log_action
 
-def create_voucher_service(session: Session, voucher_in: VoucherCreate, user_id: int) -> Voucher:
+def create_voucher_service(session: Session, voucher_in: VoucherCreate, user_id: int, client_id: str = None) -> Voucher:
     # 1. Lock the customer record to prevent concurrent balance changes
     # This ensures that no other voucher or payment is created for this customer
     # while we are calculating and saving the new voucher.
@@ -32,6 +32,7 @@ def create_voucher_service(session: Session, voucher_in: VoucherCreate, user_id:
     
     # 5. Create voucher
     voucher = Voucher(
+        client_id=client_id,
         customer_id=voucher_in.customer_id,
         voucher_number=voucher_in.voucher_number,
         voucher_date=voucher_in.voucher_date or get_yangon_date(),

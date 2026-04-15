@@ -14,16 +14,29 @@ router = APIRouter(tags=["vouchers"])
 
 @router.post("/vouchers", response_model=VoucherRead)
 def create_voucher(
-    voucher_in: VoucherCreate, 
+    voucher_in: VoucherCreate,
     session: Session = Depends(get_session),
     current_user: User = Depends(require_staff_or_admin)
 ):
+    # Idempotency: if a client_id was provided and this voucher already exists, return it
+    if voucher_in.client_id:
+        existing = session.exec(
+            select(Voucher).where(Voucher.client_id == voucher_in.client_id)
+        ).first()
+        if existing:
+            v_data = existing.model_dump()
+            v_data["customer_name"] = existing.customer.name
+            from app.services.balance import calculate_customer_balance
+            v_data["customer_balance"] = calculate_customer_balance(session, existing.customer_id)
+            v_data["items"] = existing.items
+            return v_data
+
     customer = session.get(Customer, voucher_in.customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    
+
     try:
-        return create_voucher_service(session, voucher_in, current_user.id)
+        return create_voucher_service(session, voucher_in, current_user.id, client_id=voucher_in.client_id)
     except IntegrityError:
         session.rollback()
         raise HTTPException(status_code=400, detail="Voucher number already exists. Please use a unique number.")
