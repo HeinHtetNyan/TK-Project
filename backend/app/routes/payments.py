@@ -43,39 +43,6 @@ def create_payment(
     session.refresh(db_payment)
     return db_payment
 
-@router.post("/payments/bulk", response_model=PaymentRead)
-def create_bulk_payment(
-    payment_in: PaymentCreate,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_staff_or_admin)
-):
-    # Idempotency: if client_id already exists, return the existing payment
-    if payment_in.client_id:
-        existing = session.exec(
-            select(Payment).where(Payment.client_id == payment_in.client_id)
-        ).first()
-        if existing:
-            return existing
-
-    customer = session.get(Customer, payment_in.customer_id)
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-
-    db_payment = Payment(
-        client_id=payment_in.client_id,
-        customer_id=payment_in.customer_id,
-        amount_paid=payment_in.amount_paid,
-        payment_method=payment_in.payment_method,
-        payment_date=payment_in.payment_date,
-        note=payment_in.note,
-    )
-    session.add(db_payment)
-    session.flush()
-    log_action(session, current_user.id, "CREATE", "Payment", str(db_payment.id), f"Payment of {db_payment.amount_paid} for customer {db_payment.customer_id}")
-    session.commit()
-    session.refresh(db_payment)
-    return db_payment
-
 @router.get("/payments", response_model=List[PaymentRead])
 def list_all_payments(
     session: Session = Depends(get_session),
