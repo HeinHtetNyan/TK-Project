@@ -34,8 +34,8 @@ def create_customer(
         session,
         user_id=current_user.id,
         action="CREATE_CUSTOMER",
-        target_type="CUSTOMER",
-        target_id=db_customer.id,
+        entity_type="CUSTOMER",
+        entity_id=str(db_customer.id),
         details=f"Created customer: {db_customer.name}"
     )
 
@@ -82,8 +82,8 @@ def update_customer(
         session,
         user_id=current_user.id,
         action="UPDATE_CUSTOMER",
-        target_type="CUSTOMER",
-        target_id=db_customer.id,
+        entity_type="CUSTOMER",
+        entity_id=str(db_customer.id),
         details=f"Updated customer: {db_customer.name} (ID: {db_customer.id})"
     )
 

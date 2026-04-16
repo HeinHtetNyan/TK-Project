@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FilePlus, CreditCard, History, UserPlus, Users, Search as SearchIcon, Pencil, Trash2 } from 'lucide-react';
 import Layout from '../components/Layout';
@@ -40,6 +40,7 @@ const Home = () => {
   });
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
 
   const navigate = useNavigate();
 
@@ -139,8 +140,11 @@ const Home = () => {
   // ------------------------------------------------------------------
   const handleAddCustomer = async (e) => {
     e.preventDefault();
-    if (!customerForm.name.trim()) return;
+    if (!customerForm.name.trim() || isCreatingCustomer) return;
 
+    setIsCreatingCustomer(true);
+
+    // ── ONLINE PATH: try the API first ────────────────────────────────
     if (navigator.onLine) {
       try {
         const response = await customerService.create(customerForm);
@@ -160,15 +164,56 @@ const Home = () => {
         setShowAddModal(false);
         resetForm();
         fetchAllCustomers();
-      } catch (error) {
-        alert(error.response?.data?.detail || 'Error creating customer');
-      }
-    } else {
-      // Offline — save locally and queue
-      const clientId = generateUUID();
-      const now = new Date().toISOString();
+        setIsCreatingCustomer(false);
+        return;
+      } catch (apiErr) {
+        if (apiErr.response) {
+          console.error('[Create Customer] API error:', apiErr.response.status, apiErr.response.data);
 
-      try {
+          // 5xx = server crashed AFTER the DB commit (the customer was saved but
+          // something else broke, e.g. audit logging). Verify by fetching the list.
+          if (apiErr.response.status >= 500) {
+            try {
+              const listRes = await customerService.list();
+              const nameLower = customerForm.name.trim().toLowerCase();
+              const saved = listRes.data.find(
+                c => c.name.trim().toLowerCase() === nameLower
+              );
+              if (saved) {
+                const enriched = enrichCustomer(saved);
+                db.customers.put({
+                  client_id: enriched.client_id,
+                  server_id: enriched.server_id,
+                  name: enriched.name,
+                  phone_numbers: enriched.phone_numbers ?? null,
+                  address: enriched.address ?? null,
+                  created_at: enriched.created_at,
+                  sync_status: 'synced',
+                }).catch(() => {});
+                setSelectedCustomer(enriched);
+                setShowAddModal(false);
+                resetForm();
+                fetchAllCustomers();
+                setIsCreatingCustomer(false);
+                return;
+              }
+            } catch (_) {}
+          }
+
+          setIsCreatingCustomer(false);
+          return alert(apiErr.response.data?.detail || 'Error creating customer');
+        }
+        // Network error (backend unreachable) — fall through to offline save
+        console.warn('[Create Customer] API unreachable, saving offline...');
+      }
+    }
+
+    // ── OFFLINE PATH: save locally and queue for sync ─────────────────
+    const clientId = generateUUID();
+    const now = new Date().toISOString();
+
+    try {
+      await db.transaction('rw', db.customers, db.sync_queue, async () => {
         await db.customers.add({
           client_id: clientId,
           server_id: null,
@@ -188,29 +233,32 @@ const Home = () => {
           depends_on_client_id: null,
           created_at: now,
         });
+      });
 
-        const enriched = {
-          id: clientId,
-          client_id: clientId,
-          server_id: null,
-          name: customerForm.name.trim(),
-          phone_numbers: customerForm.phone_numbers.trim() || null,
-          address: customerForm.address.trim() || null,
-          created_at: now,
-          sync_status: 'pending',
-        };
+      const enriched = {
+        id: clientId,
+        client_id: clientId,
+        server_id: null,
+        name: customerForm.name.trim(),
+        phone_numbers: customerForm.phone_numbers.trim() || null,
+        address: customerForm.address.trim() || null,
+        created_at: now,
+        sync_status: 'pending',
+      };
 
-        setSelectedCustomer(enriched);
-        setShowAddModal(false);
-        resetForm();
-        setAllCustomers(prev =>
-          [...prev, enriched].sort((a, b) => a.name.localeCompare(b.name))
-        );
-        alert('Customer saved offline. Will sync when internet is available.');
-      } catch (err) {
-        alert('Error saving customer: ' + err.message);
-      }
+      setSelectedCustomer(enriched);
+      setShowAddModal(false);
+      resetForm();
+      setAllCustomers(prev =>
+        [...prev, enriched].sort((a, b) => a.name.localeCompare(b.name))
+      );
+      alert('Customer saved offline. Will sync when internet is available.');
+    } catch (err) {
+      console.error('[Create Customer] IndexedDB error:', err);
+      alert('Error saving customer: ' + err.message);
     }
+
+    setIsCreatingCustomer(false);
   };
 
   const handleEditClick = (e, customer) => {
@@ -457,9 +505,14 @@ const Home = () => {
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-200 uppercase text-xs"
+                    disabled={isCreatingCustomer}
+                    className={`flex-1 px-4 py-4 rounded-2xl font-black shadow-lg uppercase text-xs transition-all ${
+                      isCreatingCustomer
+                        ? 'bg-blue-300 text-white cursor-not-allowed'
+                        : 'bg-blue-600 text-white shadow-blue-200'
+                    }`}
                   >
-                    Create
+                    {isCreatingCustomer ? 'Saving...' : 'Create'}
                   </button>
                 </div>
               </form>
