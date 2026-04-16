@@ -22,8 +22,8 @@ services:
     image: postgres:15-alpine
     container_name: plastic_press_db
     restart: unless-stopped
-    expose:
-      - "5432"
+    ports:
+      - "11776:5432"
     env_file:
       - .env
     environment:
