@@ -273,9 +273,9 @@ export async function syncAll() {
 
 export async function startSyncEngine() {
   if (syncIntervalId) return; // already running
-  // Reset failed items so they get another chance on next sync
+  // Reset failed/processing items — processing means the app was killed mid-sync
   await db.sync_queue
-    .where('status').equals('failed')
+    .where('status').anyOf(['failed', 'processing'])
     .modify({ status: 'pending', retries: 0 });
   if (navigator.onLine) syncAll();
   syncIntervalId = setInterval(() => {
