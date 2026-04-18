@@ -228,7 +228,11 @@ const Home = () => {
           client_id: clientId,
           type: 'customer',
           action: 'create',
-          payload: { ...customerForm },
+          payload: {
+            name: customerForm.name.trim(),
+            phone_numbers: customerForm.phone_numbers.trim() || null,
+            address: customerForm.address.trim() || null,
+          },
           status: 'pending',
           retries: 0,
           depends_on_client_id: null,
@@ -264,10 +268,6 @@ const Home = () => {
 
   const handleEditClick = (e, customer) => {
     e.stopPropagation();
-    if (!navigator.onLine) {
-      alert(t('online_only'));
-      return;
-    }
     if (!customer.server_id) {
       alert('This customer has not synced yet. Please wait for sync before editing.');
       return;
@@ -285,32 +285,70 @@ const Home = () => {
     e.preventDefault();
     if (!editingCustomer || !customerForm.name.trim()) return;
 
-    try {
-      const serverId = editingCustomer.server_id;
-      const response = await customerService.update(serverId, customerForm);
-      const enriched = enrichCustomer(response.data);
+    const serverId = editingCustomer.server_id;
+    const clientId = editingCustomer.client_id;
+    const updateFields = {
+      name: customerForm.name.trim(),
+      phone_numbers: customerForm.phone_numbers || null,
+      address: customerForm.address || null,
+    };
 
-      // Update cache in background — don't let a Dexie error hide the success
-      db.customers.put({
-        client_id: enriched.client_id,
-        server_id: enriched.server_id,
-        name: enriched.name,
-        phone_numbers: enriched.phone_numbers ?? null,
-        address: enriched.address ?? null,
-        created_at: enriched.created_at,
-        sync_status: 'synced',
-      }).catch(() => {});
+    // ── ONLINE PATH ──────────────────────────────────────────────────
+    if (navigator.onLine) {
+      try {
+        const response = await customerService.update(serverId, updateFields);
+        const enriched = enrichCustomer(response.data);
 
-      if (selectedCustomer?.server_id === enriched.server_id) {
-        setSelectedCustomer(enriched);
+        db.customers.put({
+          client_id: enriched.client_id,
+          server_id: enriched.server_id,
+          name: enriched.name,
+          phone_numbers: enriched.phone_numbers ?? null,
+          address: enriched.address ?? null,
+          created_at: enriched.created_at,
+          sync_status: 'synced',
+        }).catch(() => {});
+
+        if (selectedCustomer?.server_id === enriched.server_id) {
+          setSelectedCustomer(enriched);
+        }
+
+        setShowEditModal(false);
+        resetForm();
+        fetchAllCustomers();
+        return;
+      } catch (error) {
+        if (error.response) {
+          return alert(error.response?.data?.detail || 'Error updating customer');
+        }
+        // Network error — fall through to offline queue
       }
+    }
+
+    // ── OFFLINE PATH: queue update ────────────────────────────────────
+    try {
+      await db.transaction('rw', db.customers, db.sync_queue, async () => {
+        await db.customers.update(clientId, { ...updateFields, sync_status: 'pending' });
+        await db.sync_queue.add({
+          client_id: clientId,
+          type: 'customer',
+          action: 'update',
+          payload: { server_id: serverId, ...updateFields },
+          status: 'pending',
+          retries: 0,
+          created_at: new Date().toISOString(),
+        });
+      });
+
+      const updatedCustomer = { ...editingCustomer, ...updateFields, sync_status: 'pending' };
+      if (selectedCustomer?.client_id === clientId) setSelectedCustomer(updatedCustomer);
 
       setShowEditModal(false);
       resetForm();
       fetchAllCustomers();
-    } catch (error) {
-      console.error('[Update Customer]', error);
-      alert(error.response?.data?.detail || 'Error updating customer');
+      syncAll();
+    } catch (err) {
+      alert('Error saving customer: ' + err.message);
     }
   };
 
@@ -359,7 +397,7 @@ const Home = () => {
 
           {!showAll ? (
             <CustomerSearch
-              onSelect={(c) => setSelectedCustomer(c ? enrichCustomer(c) : null)}
+              onSelect={(c) => setSelectedCustomer(c ? (c.client_id ? c : enrichCustomer(c)) : null)}
               onAdd={() => setShowAddModal(true)}
               onEdit={handleEditClick}
               selectedCustomer={selectedCustomer}

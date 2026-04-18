@@ -103,6 +103,7 @@ const Voucher = () => {
 
     const apiPayload = {
       customer_id: serverId,
+      customer_client_id: customer.client_id ?? null,
       voucher_number: voucherNumber,
       voucher_date: voucherDate,
       paid_amount: paid,
@@ -127,6 +128,8 @@ const Voucher = () => {
           voucher_date: voucherDate,
           items_total: itemsTotal,
           paid_amount: paid,
+          payment_method: paid > 0 ? paymentMethod : null,
+          note: note,
           items: mappedItems,
           sync_status: 'synced',
           created_at: now,

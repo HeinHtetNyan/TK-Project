@@ -46,7 +46,7 @@ db.version(1).stores({
    * localId    — auto-increment surrogate key (ordering guarantee)
    * client_id  — UUID of the record being synced (matches the record's client_id)
    * type       — 'customer' | 'voucher' | 'payment'
-   * action     — 'create'  (update/delete are handled online-only for now)
+   * action     — 'create' | 'update' | 'delete'
    * payload    — full JSON to POST to the backend
    * status     — 'pending' | 'processing' | 'done' | 'failed'
    * retries    — how many times this item has failed

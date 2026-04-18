@@ -1,10 +1,11 @@
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select, func
 from app.db import get_session
 from app.models.user import User, UserRole
 from app.core.security import create_access_token, verify_password, get_password_hash, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.core.limiter import limiter
 from app.schemas.user import Token, UserCreate, UserRead
 
 router = APIRouter(tags=["auth"])
@@ -34,7 +35,9 @@ def setup_admin(user_in: UserCreate, session: Session = Depends(get_session)):
     return db_user
 
 @router.post("/auth/login", response_model=Token)
+@limiter.limit("5/minute")
 def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: Session = Depends(get_session)
 ):

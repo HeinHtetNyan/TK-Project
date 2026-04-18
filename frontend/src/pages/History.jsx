@@ -6,6 +6,8 @@ import DropdownDatePicker from '../components/DropdownDatePicker';
 import { voucherService, paymentService } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
+import db from '../lib/db';
+import { syncAll, cacheVouchers, cachePayments, loadCachedVouchers, loadCachedPayments } from '../services/syncService';
 
 const History = () => {
   const location = useLocation();
@@ -24,30 +26,45 @@ const History = () => {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [selectedDate, setSelectedDate] = useState(''); 
 
+  const loadFromCache = useCallback(async () => {
+    if (!customer) return;
+    const [vData, pData] = await Promise.all([
+      loadCachedVouchers(customer.client_id),
+      loadCachedPayments(customer.client_id),
+    ]);
+    setVouchers(vData);
+    setPayments(pData);
+  }, [customer]);
+
   const fetchHistory = useCallback(async () => {
     if (!customer) return;
-    // server_id is the reliable integer ID; customer.id may be a UUID for offline customers
     const serverId = customer.server_id ?? (typeof customer.id === 'number' ? customer.id : null);
-    if (!serverId) {
-      // Offline customer not yet synced — no server history to fetch
-      setVouchers([]);
-      setPayments([]);
+
+    if (!serverId || !navigator.onLine) {
+      await loadFromCache();
       return;
     }
+
     setLoading(true);
     try {
       const [vRes, pRes] = await Promise.all([
         voucherService.getCustomerVouchers(serverId),
-        paymentService.getCustomerPayments(serverId)
+        paymentService.getCustomerPayments(serverId),
       ]);
-      setVouchers(vRes.data || []);
-      setPayments(pRes.data || []);
+      const serverVouchers = (vRes.data || []).map(v => ({ ...v, client_id: v.client_id ?? `server_${v.id}` }));
+      const serverPayments = (pRes.data || []).map(p => ({ ...p, client_id: p.client_id ?? `server_${p.id}` }));
+      setVouchers(serverVouchers);
+      setPayments(serverPayments);
+      // Cache in background so history is viewable offline next time
+      cacheVouchers(customer.client_id, vRes.data || []).catch(() => {});
+      cachePayments(customer.client_id, pRes.data || []).catch(() => {});
     } catch (error) {
       console.error('Fetch history error:', error);
+      await loadFromCache();
     } finally {
       setLoading(false);
     }
-  }, [customer]);
+  }, [customer, loadFromCache]);
 
   useEffect(() => {
     if (!customer) {
@@ -57,26 +74,89 @@ const History = () => {
     }
   }, [customer, navigate, fetchHistory]);
 
-  const handleDeleteVoucher = async (e, id) => {
+  const handleDeleteVoucher = async (e, item) => {
     e.stopPropagation();
-    if (window.confirm(t('are_you_sure_delete_voucher'))) {
+    if (!window.confirm(t('are_you_sure_delete_voucher'))) return;
+
+    const clientId = item.client_id;
+    const serverId = item.server_id ?? (typeof item.id === 'number' ? item.id : null);
+
+    // Pending item never reached the server — delete locally only
+    if (!serverId) {
+      await db.vouchers.delete(clientId).catch(() => {});
+      await db.sync_queue.where('client_id').equals(clientId).delete().catch(() => {});
+      setVouchers(prev => prev.filter(v => v.client_id !== clientId));
+      return;
+    }
+
+    if (!navigator.onLine) {
       try {
-        await voucherService.delete(id);
-        fetchHistory();
-      } catch {
-        alert(t('error_deleting_voucher'));
-      }
+        await db.transaction('rw', db.vouchers, db.sync_queue, async () => {
+          await db.vouchers.delete(clientId);
+          await db.sync_queue.add({
+            client_id: clientId,
+            type: 'voucher',
+            action: 'delete',
+            payload: { server_id: serverId },
+            status: 'pending',
+            retries: 0,
+            created_at: new Date().toISOString(),
+          });
+        });
+        syncAll();
+      } catch {}
+      setVouchers(prev => prev.filter(v => v.client_id !== clientId));
+      return;
+    }
+
+    try {
+      await voucherService.delete(serverId);
+      db.vouchers.delete(clientId).catch(() => {});
+      fetchHistory();
+    } catch {
+      alert(t('error_deleting_voucher'));
     }
   };
 
-  const handleDeletePayment = async (id) => {
-    if (window.confirm(t('are_you_sure_delete_payment'))) {
+  const handleDeletePayment = async (item) => {
+    if (!window.confirm(t('are_you_sure_delete_payment'))) return;
+
+    const clientId = item.client_id;
+    const serverId = item.server_id ?? (typeof item.id === 'number' ? item.id : null);
+
+    if (!serverId) {
+      await db.payments.delete(clientId).catch(() => {});
+      await db.sync_queue.where('client_id').equals(clientId).delete().catch(() => {});
+      setPayments(prev => prev.filter(p => p.client_id !== clientId));
+      return;
+    }
+
+    if (!navigator.onLine) {
       try {
-        await paymentService.delete(id);
-        fetchHistory();
-      } catch {
-        alert(t('error_deleting_payment'));
-      }
+        await db.transaction('rw', db.payments, db.sync_queue, async () => {
+          await db.payments.delete(clientId);
+          await db.sync_queue.add({
+            client_id: clientId,
+            type: 'payment',
+            action: 'delete',
+            payload: { server_id: serverId },
+            status: 'pending',
+            retries: 0,
+            created_at: new Date().toISOString(),
+          });
+        });
+        syncAll();
+      } catch {}
+      setPayments(prev => prev.filter(p => p.client_id !== clientId));
+      return;
+    }
+
+    try {
+      await paymentService.delete(serverId);
+      db.payments.delete(clientId).catch(() => {});
+      fetchHistory();
+    } catch {
+      alert(t('error_deleting_payment'));
     }
   };
 
@@ -173,6 +253,9 @@ const History = () => {
                           <div className="flex items-center gap-2">
                             <span className="font-black text-gray-800 text-sm truncate">{item.voucher_number}</span>
                             <span className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded font-black text-gray-500 whitespace-nowrap">{item.voucher_date}</span>
+                            {item.sync_status === 'pending' && (
+                              <span className="text-[8px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-black uppercase">Pending</span>
+                            )}
                             {item.paid_amount > 0 && item.payment_method && (
                               <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase ${
                                 item.payment_method === 'KBZPAY' ? 'bg-blue-100 text-blue-600' : 
@@ -195,8 +278,8 @@ const History = () => {
                         </div>
                         <div className="flex flex-col gap-1 items-end sm:flex-row sm:items-center sm:gap-3 ml-2">
                            {isAdmin() && (
-                             <button 
-                               onClick={(e) => handleDeleteVoucher(e, item.id)}
+                             <button
+                               onClick={(e) => handleDeleteVoucher(e, item)}
                                className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all order-2 sm:order-1"
                              >
                                <Trash2 size={16} />
@@ -288,6 +371,9 @@ const History = () => {
                         <div className="flex items-center gap-2">
                           <span className="font-black text-green-700 text-sm">{t('direct_payment')}</span>
                           <span className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded font-black text-gray-500 whitespace-nowrap">{item.payment_date}</span>
+                          {item.sync_status === 'pending' && (
+                            <span className="text-[8px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-black uppercase">Pending</span>
+                          )}
                           {item.payment_method && (
                             <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase ${
                               item.payment_method === 'KBZPAY' ? 'bg-blue-100 text-blue-600' : 
@@ -310,7 +396,7 @@ const History = () => {
                       </div>
                       {isAdmin() && (
                         <button 
-                          onClick={() => handleDeletePayment(item.id)}
+                          onClick={() => handleDeletePayment(item)}
                           className="p-1.5 text-gray-200 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all group-hover:text-gray-300"
                         >
                           <Trash2 size={16} />

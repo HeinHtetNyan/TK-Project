@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow both HTTP and HTTPS globally so the app works over any network
+         (Cloudflare HTTPS tunnel for internet, plain HTTP for local LAN).
+         Certificate pinning and trust anchors use Android defaults. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

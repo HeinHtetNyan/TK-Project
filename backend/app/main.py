@@ -1,8 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 import os
 import logging
 from app.db import init_db
+from app.core.limiter import limiter
 from app.routes import customers, vouchers, payments, auth, users, analytics, audit
 
 # Configure logging
@@ -20,6 +23,9 @@ app = FastAPI(
     openapi_url="/api/openapi.json" if SHOW_DOCS else None
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # CORS Middleware
 # Set ALLOWED_ORIGINS in .env as a comma-separated list, e.g.:
 #   ALLOWED_ORIGINS=http://localhost:5173,https://yourtunnel.trycloudflare.com
@@ -33,6 +39,14 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 @app.on_event("startup")
 def on_startup():

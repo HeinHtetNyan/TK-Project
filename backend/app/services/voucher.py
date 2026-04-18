@@ -1,3 +1,5 @@
+from fastapi import HTTPException
+from sqlalchemy.exc import NoResultFound
 from sqlmodel import Session, select
 from app.models import Voucher, Item, Customer
 from app.schemas.voucher import VoucherCreate
@@ -7,9 +9,10 @@ from app.services.audit import log_action
 
 def create_voucher_service(session: Session, voucher_in: VoucherCreate, user_id: int, client_id: str = None) -> Voucher:
     # 1. Lock the customer record to prevent concurrent balance changes
-    # This ensures that no other voucher or payment is created for this customer
-    # while we are calculating and saving the new voucher.
-    session.exec(select(Customer).where(Customer.id == voucher_in.customer_id).with_for_update()).one()
+    try:
+        session.exec(select(Customer).where(Customer.id == voucher_in.customer_id).with_for_update()).one()
+    except NoResultFound:
+        raise HTTPException(status_code=404, detail="Customer not found")
     
     # 2. Calculate previous balance
     previous_balance = calculate_customer_balance(session, voucher_in.customer_id)

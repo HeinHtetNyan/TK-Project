@@ -70,6 +70,7 @@ const Payment = () => {
 
     const apiPayload = {
       customer_id: serverId,
+      customer_client_id: customer.client_id ?? null,
       amount_paid: paid,
       payment_method: paymentMethod,
       payment_date: paymentDate,

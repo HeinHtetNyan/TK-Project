@@ -30,12 +30,16 @@ def get_dashboard_data(
     total_debt = total_revenue - total_paid_vouchers - total_standalone_payments
 
     # 3. Income by Payment Method
-    # Payments from Vouchers
-    voucher_payments_query = select(Voucher.payment_method, func.sum(Voucher.paid_amount)).where(Voucher.paid_amount > 0).group_by(Voucher.payment_method)
+    # Payments from Vouchers (exclude rows where payment_method is NULL)
+    voucher_payments_query = select(Voucher.payment_method, func.sum(Voucher.paid_amount)).where(
+        Voucher.paid_amount > 0, Voucher.payment_method.isnot(None)
+    ).group_by(Voucher.payment_method)
     voucher_payments = session.exec(voucher_payments_query).all()
-    
+
     # Standalone Payments
-    standalone_payments_query = select(Payment.payment_method, func.sum(Payment.amount_paid)).group_by(Payment.payment_method)
+    standalone_payments_query = select(Payment.payment_method, func.sum(Payment.amount_paid)).where(
+        Payment.payment_method.isnot(None)
+    ).group_by(Payment.payment_method)
     standalone_payments = session.exec(standalone_payments_query).all()
     
     income_by_method = {}

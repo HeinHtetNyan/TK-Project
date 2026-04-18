@@ -12,7 +12,7 @@ let isSyncing = false;
 // --------------------------------------------------------------------------
 
 export async function getPendingCount() {
-  return db.sync_queue.where('status').anyOf(['pending', 'failed']).count();
+  return db.sync_queue.where('status').anyOf(['pending', 'processing', 'failed']).count();
 }
 
 // --------------------------------------------------------------------------
@@ -107,11 +107,11 @@ async function syncCustomer(item) {
 // --------------------------------------------------------------------------
 
 async function syncVoucher(item) {
-  const payload = { ...item.payload };
+  const { customer_client_id, ...payload } = { ...item.payload };
 
   // Resolve customer_id if the customer was also created offline
   if (!payload.customer_id) {
-    const customer = await db.customers.get(payload.customer_client_id);
+    const customer = await db.customers.get(customer_client_id);
     if (!customer?.server_id) {
       throw new Error('Customer not yet synced — voucher deferred');
     }
@@ -138,10 +138,10 @@ async function syncVoucher(item) {
 // --------------------------------------------------------------------------
 
 async function syncPayment(item) {
-  const payload = { ...item.payload };
+  const { customer_client_id, ...payload } = { ...item.payload };
 
   if (!payload.customer_id) {
-    const customer = await db.customers.get(payload.customer_client_id);
+    const customer = await db.customers.get(customer_client_id);
     if (!customer?.server_id) {
       throw new Error('Customer not yet synced — payment deferred');
     }
@@ -157,6 +157,43 @@ async function syncPayment(item) {
     server_id: res.data.id,
     sync_status: 'synced',
   });
+}
+
+// --------------------------------------------------------------------------
+// Customer update sync
+// --------------------------------------------------------------------------
+
+async function syncCustomerUpdate(item) {
+  const { server_id, ...fields } = item.payload;
+  const res = await api.put(`/customers/${server_id}`, fields);
+  await db.customers.update(item.client_id, {
+    name: res.data.name,
+    phone_numbers: res.data.phone_numbers ?? null,
+    address: res.data.address ?? null,
+    sync_status: 'synced',
+  });
+}
+
+// --------------------------------------------------------------------------
+// Voucher / Payment delete sync
+// --------------------------------------------------------------------------
+
+async function syncVoucherDelete(item) {
+  try {
+    await api.delete(`/vouchers/${item.payload.server_id}`);
+  } catch (err) {
+    if (err.response?.status !== 404) throw err; // already deleted on server — treat as success
+  }
+  await db.vouchers.delete(item.client_id);
+}
+
+async function syncPaymentDelete(item) {
+  try {
+    await api.delete(`/payments/${item.payload.server_id}`);
+  } catch (err) {
+    if (err.response?.status !== 404) throw err;
+  }
+  await db.payments.delete(item.client_id);
 }
 
 // --------------------------------------------------------------------------
@@ -179,16 +216,19 @@ async function processQueueItem(item) {
   await db.sync_queue.update(item.localId, { status: 'processing' });
 
   try {
-    if (item.type === 'customer') await syncCustomer(item);
-    else if (item.type === 'voucher') await syncVoucher(item);
-    else if (item.type === 'payment') await syncPayment(item);
+    if (item.type === 'customer' && item.action === 'create') await syncCustomer(item);
+    else if (item.type === 'customer' && item.action === 'update') await syncCustomerUpdate(item);
+    else if (item.type === 'voucher' && item.action === 'create') await syncVoucher(item);
+    else if (item.type === 'voucher' && item.action === 'delete') await syncVoucherDelete(item);
+    else if (item.type === 'payment' && item.action === 'create') await syncPayment(item);
+    else if (item.type === 'payment' && item.action === 'delete') await syncPaymentDelete(item);
 
     await db.sync_queue.update(item.localId, { status: 'done' });
   } catch (err) {
     const retries = (item.retries || 0) + 1;
     const newStatus = retries >= MAX_RETRIES ? 'failed' : 'pending';
     await db.sync_queue.update(item.localId, { retries, status: newStatus });
-    console.warn(`[sync] ${item.type} ${item.client_id} → ${newStatus} (attempt ${retries})`, err?.message);
+    console.warn(`[sync] ${item.type}:${item.action} ${item.client_id} → ${newStatus} (attempt ${retries})`, err?.message);
   }
 }
 
@@ -231,9 +271,12 @@ export async function syncAll() {
 // Interval / lifecycle
 // --------------------------------------------------------------------------
 
-export function startSyncEngine() {
+export async function startSyncEngine() {
   if (syncIntervalId) return; // already running
-  // Sync immediately on startup if online
+  // Reset failed items so they get another chance on next sync
+  await db.sync_queue
+    .where('status').equals('failed')
+    .modify({ status: 'pending', retries: 0 });
   if (navigator.onLine) syncAll();
   syncIntervalId = setInterval(() => {
     if (navigator.onLine) syncAll();
@@ -298,6 +341,90 @@ export async function loadCachedCustomers() {
     address: r.address,
     created_at: r.created_at,
     sync_status: r.sync_status,
+  }));
+}
+
+// --------------------------------------------------------------------------
+// Voucher / Payment cache helpers (used by History page)
+// --------------------------------------------------------------------------
+
+export async function cacheVouchers(customerClientId, serverVouchers) {
+  const rows = serverVouchers.map(v => ({
+    client_id: v.client_id ?? `server_${v.id}`,
+    server_id: v.id,
+    customer_client_id: customerClientId,
+    customer_server_id: v.customer_id,
+    voucher_number: v.voucher_number,
+    voucher_date: v.voucher_date,
+    items_total: v.items_total,
+    paid_amount: v.paid_amount,
+    payment_method: v.payment_method,
+    note: v.note,
+    items: v.items,
+    remaining_balance: v.remaining_balance,
+    previous_balance: v.previous_balance,
+    final_total: v.final_total,
+    sync_status: 'synced',
+    created_at: v.created_at,
+  }));
+  await db.vouchers.bulkPut(rows);
+}
+
+export async function cachePayments(customerClientId, serverPayments) {
+  const rows = serverPayments.map(p => ({
+    client_id: p.client_id ?? `server_${p.id}`,
+    server_id: p.id,
+    customer_client_id: customerClientId,
+    customer_server_id: p.customer_id,
+    amount_paid: p.amount_paid,
+    payment_method: p.payment_method,
+    payment_date: p.payment_date,
+    note: p.note,
+    sync_status: 'synced',
+    created_at: p.created_at,
+  }));
+  await db.payments.bulkPut(rows);
+}
+
+export async function loadCachedVouchers(customerClientId) {
+  const rows = await db.vouchers
+    .where('customer_client_id')
+    .equals(customerClientId)
+    .toArray();
+  return rows.map(v => ({
+    id: v.server_id ?? v.client_id,
+    client_id: v.client_id,
+    server_id: v.server_id,
+    voucher_number: v.voucher_number,
+    voucher_date: v.voucher_date,
+    items_total: v.items_total ?? 0,
+    paid_amount: v.paid_amount ?? 0,
+    payment_method: v.payment_method,
+    note: v.note,
+    items: v.items ?? [],
+    remaining_balance: v.remaining_balance ?? 0,
+    previous_balance: v.previous_balance ?? 0,
+    final_total: v.final_total ?? 0,
+    sync_status: v.sync_status,
+    created_at: v.created_at,
+  }));
+}
+
+export async function loadCachedPayments(customerClientId) {
+  const rows = await db.payments
+    .where('customer_client_id')
+    .equals(customerClientId)
+    .toArray();
+  return rows.map(p => ({
+    id: p.server_id ?? p.client_id,
+    client_id: p.client_id,
+    server_id: p.server_id,
+    amount_paid: p.amount_paid,
+    payment_method: p.payment_method,
+    payment_date: p.payment_date,
+    note: p.note,
+    sync_status: p.sync_status,
+    created_at: p.created_at,
   }));
 }
 

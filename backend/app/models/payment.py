@@ -13,7 +13,7 @@ class Payment(SQLModel, table=True):
     client_id: Optional[str] = Field(default=None, unique=True, index=True)
     customer_id: int = Field(foreign_key="customer.id")
     amount_paid: float = Field(ge=0)
-    payment_method: Optional[PaymentMethod] = Field(default=None)
+    payment_method: PaymentMethod
     payment_date: date = Field(default_factory=get_yangon_date)
     note: Optional[str] = None
     created_at: datetime = Field(default_factory=get_yangon_now)

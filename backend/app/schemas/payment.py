@@ -29,6 +29,7 @@ class PaymentBase(BaseModel):
 
 class PaymentCreate(PaymentBase):
     client_id: Optional[str] = None
+    payment_method: PaymentMethod  # required for standalone payments
 
 class PaymentRead(PaymentBase):
     id: int
