@@ -33,7 +33,7 @@ const History = () => {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [expandedVoucher, setExpandedVoucher] = useState(null);
-  const [sortOrder, setSortOrder] = useState('asc');
+  const [sortOrder, setSortOrder] = useState('desc');
   const [selectedDate, setSelectedDate] = useState('');
 
   // Edit modal state
