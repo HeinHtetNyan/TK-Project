@@ -29,7 +29,9 @@ export function cacheBalance(customerServerId, balance) {
       `balance_${customerServerId}`,
       JSON.stringify({ balance, ts: Date.now() })
     );
-  } catch (_) {}
+  } catch (err) {
+    console.warn('[sync] Failed to write balance cache to localStorage:', err);
+  }
 }
 
 export function getCachedBalance(customerServerId) {
@@ -208,7 +210,12 @@ async function processQueueItem(item) {
       .equals(item.depends_on_client_id)
       .first();
     if (dep && dep.status !== 'done') {
-      return; // Dependency not resolved yet — skip for now
+      if (dep.status === 'failed') {
+        // Dependency permanently failed — escalate this item too so it doesn't block forever
+        await db.sync_queue.update(item.localId, { status: 'failed', retries: MAX_RETRIES });
+        console.warn(`[sync] ${item.type}:${item.action} ${item.client_id} → failed (dependency ${dep.client_id} permanently failed)`);
+      }
+      return;
     }
   }
 

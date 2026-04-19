@@ -1,5 +1,6 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import NoResultFound
 from sqlmodel import Session, select
 from app.db import get_session
 from app.models import Payment, Customer, User
@@ -24,8 +25,9 @@ def create_payment(
         if existing:
             return existing
 
-    customer = session.get(Customer, payment_in.customer_id)
-    if not customer:
+    try:
+        session.exec(select(Customer).where(Customer.id == payment_in.customer_id).with_for_update()).one()
+    except NoResultFound:
         raise HTTPException(status_code=404, detail="Customer not found")
 
     db_payment = Payment(

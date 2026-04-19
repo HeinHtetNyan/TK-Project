@@ -86,6 +86,8 @@ services:
       - RCLONE_CONFIG_R2_ENDPOINT=https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
       - R2_BUCKET=${R2_BUCKET}
     entrypoint: ["/bin/sh", "/rclone-sync.sh"]
+    networks:
+      - internal
 
 volumes:
   postgres_data:

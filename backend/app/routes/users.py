@@ -1,6 +1,6 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from app.db import get_session
 from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserRead
@@ -20,7 +20,7 @@ def create_user(
     if user:
         raise HTTPException(
             status_code=400,
-            detail="The user with this username already exists in the system.",
+            detail="Username is already taken.",
         )
     
     db_user = User(
@@ -89,10 +89,14 @@ def delete_user(
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # Don't allow deleting the last admin or yourself
+
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
+
+    if user.role == UserRole.ADMIN:
+        admin_count = session.exec(select(func.count(User.id)).where(User.role == UserRole.ADMIN)).one()
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last admin account")
     
     log_action(
         session,
