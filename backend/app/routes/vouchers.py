@@ -119,6 +119,7 @@ def update_voucher(
     for old_item in list(voucher.items):
         session.delete(old_item)
     session.flush()
+    session.expire(voucher, ['items'])
 
     new_items = [
         Item(
@@ -143,7 +144,9 @@ def update_voucher(
     voucher.payment_method = voucher_in.payment_method
     voucher.remaining_balance = remaining_balance
     voucher.note = voucher_in.note
-    voucher.items = new_items
+
+    for item in new_items:
+        session.add(item)
 
     try:
         session.add(voucher)
