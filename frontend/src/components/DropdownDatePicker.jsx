@@ -18,7 +18,7 @@ const DropdownDatePicker = ({ value, onChange, label }) => {
   const days = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
   const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
   const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 5 }, (_, i) => String(currentYear - i));
+  const years = Array.from({ length: 7 }, (_, i) => String(currentYear - i));
 
   return (
     <div className="space-y-1">
