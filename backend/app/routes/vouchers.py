@@ -4,7 +4,8 @@ from sqlmodel import Session, select
 from sqlalchemy.exc import IntegrityError
 from app.db import get_session
 from app.models import Voucher, Customer, User
-from app.schemas.voucher import VoucherCreate, VoucherRead
+from app.schemas.voucher import VoucherCreate, VoucherRead, VoucherUpdate
+from app.models.item import Item
 from app.services.voucher import create_voucher_service
 from app.dependencies.auth import require_staff_or_admin, require_admin
 from app.services.balance import calculate_customer_balance
@@ -98,6 +99,66 @@ def get_customer_vouchers(
         v_data["items"] = v.items
         vouchers.append(v_data)
     return vouchers
+
+@router.put("/vouchers/{voucher_id}", response_model=VoucherRead)
+def update_voucher(
+    voucher_id: int,
+    voucher_in: VoucherUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_staff_or_admin)
+):
+    voucher = session.get(Voucher, voucher_id)
+    if not voucher:
+        raise HTTPException(status_code=404, detail="Voucher not found")
+
+    items_total = sum(i.lb * (i.plastic_price + i.color_price) for i in voucher_in.items)
+    extra_charge = voucher_in.extra_charge_amount or 0.0
+    final_total = items_total + extra_charge + voucher.previous_balance
+    remaining_balance = final_total - (voucher_in.paid_amount or 0.0)
+
+    for old_item in list(voucher.items):
+        session.delete(old_item)
+    session.flush()
+
+    new_items = [
+        Item(
+            voucher_id=voucher.id,
+            lb=i.lb,
+            plastic_size=i.plastic_size,
+            plastic_price=i.plastic_price,
+            color=i.color,
+            color_price=i.color_price,
+            total_price=i.lb * (i.plastic_price + i.color_price),
+        )
+        for i in voucher_in.items
+    ]
+
+    voucher.voucher_number = voucher_in.voucher_number
+    voucher.voucher_date = voucher_in.voucher_date
+    voucher.items_total = items_total
+    voucher.extra_charge_note = voucher_in.extra_charge_note or None
+    voucher.extra_charge_amount = extra_charge
+    voucher.final_total = final_total
+    voucher.paid_amount = voucher_in.paid_amount or 0.0
+    voucher.payment_method = voucher_in.payment_method
+    voucher.remaining_balance = remaining_balance
+    voucher.note = voucher_in.note
+    voucher.items = new_items
+
+    try:
+        session.add(voucher)
+        log_action(session, current_user.id, "UPDATE", "Voucher", str(voucher_id), f"Voucher #{voucher.voucher_number} updated")
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=400, detail="Voucher number already exists.")
+
+    session.refresh(voucher)
+    v_data = voucher.model_dump()
+    v_data["customer_name"] = voucher.customer.name
+    v_data["customer_balance"] = calculate_customer_balance(session, voucher.customer_id)
+    v_data["items"] = voucher.items
+    return v_data
 
 @router.delete("/vouchers/{voucher_id}")
 def delete_voucher(

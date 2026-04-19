@@ -51,6 +51,26 @@ class VoucherCreate(VoucherBase):
     items: List[ItemCreate]
     client_id: Optional[str] = None
 
+class VoucherUpdate(BaseModel):
+    voucher_number: str
+    voucher_date: Optional[date] = None
+    paid_amount: float = Field(default=0.0, ge=0)
+    payment_method: Optional[PaymentMethod] = Field(default=None)
+    note: Optional[str] = None
+    extra_charge_note: Optional[str] = None
+    extra_charge_amount: float = Field(default=0.0, ge=0)
+    items: List[ItemCreate]
+
+    @field_validator("voucher_date", mode="before")
+    @classmethod
+    def parse_voucher_date(cls, v: Any) -> Any:
+        if isinstance(v, str) and v:
+            try:
+                return datetime.strptime(v, "%d-%m-%Y").date()
+            except ValueError:
+                pass
+        return v
+
 class VoucherRead(VoucherBase):
     id: int
     client_id: Optional[str] = None

@@ -94,6 +94,7 @@ export const customerService = {
 
 export const voucherService = {
   create: (data) => api.post('/vouchers', data),
+  update: (id, data) => api.put(`/vouchers/${id}`, data),
   get: (id) => api.get(`/vouchers/${id}`),
   listAll: () => api.get('/vouchers'),
   getCustomerVouchers: (customerId) => api.get(`/customers/${customerId}/vouchers`),
