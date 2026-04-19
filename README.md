@@ -1,3 +1,4 @@
+![image alt](https://github.com/HeinHtetNyan/TK-Plastic-Press-POS/blob/4fedf02afd4a83e8598ba07a98a7998247747c7d/Screenshot%202026-04-20%20022638.png)
 # TK Plastic Press POS System
 
 A modern, offline-capable Point of Sale (POS) system designed for TK Plastic Press. Built with a FastAPI backend, a React 19 frontend (deployed on Vercel), and a native Android WebView wrapper.
