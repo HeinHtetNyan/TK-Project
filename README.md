@@ -1,6 +1,6 @@
 # TK Plastic Press POS System
 
-A modern, offline-capable Point of Sale (POS) system designed for TK Plastic Press. Built with a FastAPI backend, a React 19 frontend with offline synchronization, PostgreSQL database, and a native Android WebView wrapper for mobile deployment.
+A modern, offline-capable Point of Sale (POS) system designed for TK Plastic Press. Built with a FastAPI backend, a React 19 frontend (deployed on Vercel), and a native Android WebView wrapper.
 
 ## Key Features
 
@@ -12,16 +12,13 @@ A modern, offline-capable Point of Sale (POS) system designed for TK Plastic Pre
   - Voucher creation with line items (plastic size, color, pricing).
   - Payment processing (Cash, Bank Transfer, KBZPay) with history.
   - Real-time analytics dashboard: 30-day sales trends, debt overview, income by payment method, top customers.
-- **Security & Role-Based Access**:
-  - JWT-based authentication with configurable token expiry.
-  - Role-based permissions: Admin vs. Staff.
-  - Detailed audit logs for all create, update, and delete actions.
-- **Multi-Language Support**: Language context built into the frontend for localization.
+- **Hybrid Deployment**:
+  - **Frontend**: High-availability React application deployed on Vercel.
+  - **Backend**: Containerized FastAPI application on a VPS, fronted by a Cloudflare Tunnel or direct exposed port.
 - **Native Android Integration**: Android WebView wrapper with network-awareness, pull-to-refresh, and back-button handling.
-- **Enterprise-Ready Infrastructure**:
-  - Fully containerized with Docker Compose (dev and production configs).
-  - Nginx reverse proxy serving built frontend and proxying API requests.
-  - Automated daily PostgreSQL backups (7-day daily, 4-week weekly, 6-month monthly retention).
+- **Resilient Infrastructure**:
+  - Automated daily PostgreSQL backups with local rotation.
+  - **Cloudflare R2 Sync**: Backups are automatically mirrored to Cloudflare R2 storage for off-site disaster recovery.
 
 ## Tech Stack
 
@@ -35,17 +32,18 @@ A modern, offline-capable Point of Sale (POS) system designed for TK Plastic Pre
 | Passlib + Bcrypt | Password hashing |
 | python-jose | JWT token generation and verification |
 | Uvicorn | ASGI server (2 workers in production) |
+| SlowAPI | Rate limiting (auth routes) |
 
 ### Frontend
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| React | 19.2.4 | UI framework |
-| Vite | 8.0.4 | Build tool with HMR |
-| Tailwind CSS | 4.2.2 | Utility-first styling |
-| Dexie.js | 4.4.2 | IndexedDB (offline storage & sync queue) |
-| React Router | 7 | Client-side routing |
-| Axios | 1.15.0 | HTTP client with JWT interceptors |
-| Recharts | 3.8.1 | Analytics charts |
+| React | 19.x | UI framework (Deployed on Vercel) |
+| Vite | 8.x | Build tool |
+| Tailwind CSS | 4.x | Utility-first styling |
+| Dexie.js | 4.x | IndexedDB (offline storage & sync queue) |
+| React Router | 7.x | Client-side routing with Vercel rewrites |
+| Axios | 1.x | HTTP client with JWT interceptors |
+| Recharts | 3.x | Analytics charts |
 | Lucide React | — | Icons |
 
 ### Mobile
@@ -54,9 +52,10 @@ A modern, offline-capable Point of Sale (POS) system designed for TK Plastic Pre
 - **Features**: Network status monitoring, performance optimizations, native UI controls
 
 ### Infrastructure
-- **Containerization**: Docker Compose (dev + production)
-- **Reverse Proxy**: Nginx (static asset caching, GZIP compression, SPA fallback)
+- **VPS Deployment**: Docker Compose (backend + postgres + backup system)
+- **Frontend Hosting**: Vercel (Production)
 - **Database Backups**: `prodrigestivill/postgres-backup-local`
+- **Cloud Sync**: `rclone` (S3/Cloudflare R2)
 
 ## Project Structure
 
@@ -73,17 +72,19 @@ TK-Project/
 │   │   └── core/             # Security utilities
 │   └── alembic/              # Database migrations
 ├── frontend/                 # React + Vite application
-│   └── src/
-│       ├── pages/            # Route-level page components
-│       ├── components/       # Reusable UI components
-│       ├── services/         # API client and sync engine
-│       ├── context/          # Auth and Language context providers
-│       ├── hooks/            # Custom React hooks
-│       └── lib/              # Dexie DB setup
-├── nginx/                    # Nginx proxy configuration
+│   ├── src/
+│   │   ├── pages/            # Route-level page components
+│   │   ├── components/       # Reusable UI components
+│   │   ├── services/         # API client and sync engine
+│   │   ├── context/          # Auth and Language context providers
+│   │   ├── hooks/            # Custom React hooks
+│   │   └── lib/              # Dexie DB setup
+│   ├── public/               # Static assets & manifest for PWA
+│   └── vercel.json           # Vercel deployment configuration
+├── scripts/                  # Utility scripts (backup sync)
 ├── backups/                  # Automated database backup files
 ├── docker-compose.yml        # Development Docker orchestration
-├── docker-compose.prod.yml   # Production Docker orchestration
+├── docker-compose.prod.yml   # Production Docker (Backend-only stack)
 └── .env.example              # Environment variables template
 ```
 
@@ -101,12 +102,6 @@ Copy the `.env.example` to `.env` and fill in your values:
 cp .env.example .env
 ```
 
-Generate a secure `SECRET_KEY`:
-
-```bash
-openssl rand -hex 32
-```
-
 **Required environment variables:**
 
 | Variable | Description | Example |
@@ -115,105 +110,59 @@ openssl rand -hex 32
 | `POSTGRES_USER` | Database username | `tkadmin` |
 | `POSTGRES_PASSWORD` | Database password | `strongpassword` |
 | `POSTGRES_DB` | Database name | `tkdb` |
-| `SECRET_KEY` | JWT signing secret (generate with openssl) | `abc123...` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | JWT token lifetime in minutes | `480` (8 hours) |
+| `SECRET_KEY` | JWT signing secret | `abc123...` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | JWT token lifetime | `480` (8 hours) |
 | `TZ` | Server timezone | `Asia/Yangon` |
-| `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:5173` |
-| `SHOW_DOCS` | Enable Swagger UI (`true` in dev, `false` in prod) | `false` |
+| `ALLOWED_ORIGINS` | CORS origins (add your Vercel domain here) | `https://your-pos.vercel.app` |
+| `SHOW_DOCS` | Enable Swagger UI (`true`/`false`) | `false` |
+| `R2_ACCOUNT_ID` | Cloudflare R2 Account ID | `your-id` |
+| `R2_ACCESS_KEY_ID` | R2 API Access Key | `your-key` |
+| `R2_SECRET_ACCESS_KEY` | R2 API Secret Key | `your-secret` |
+| `R2_BUCKET` | R2 Bucket Name | `your-bucket` |
 
-### 2. Development Mode
+### 2. Deployment (VPS - Backend)
 
-Starts backend (port 8000), frontend with HMR (port 5173), and PostgreSQL (port 5432):
-
-```bash
-docker-compose up -d --build
-```
-
-Services available at:
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:8000
-- **Swagger Docs** (if `SHOW_DOCS=true`): http://localhost:8000/api/docs
-
-### 3. Database Migrations
-
-On first run, apply the schema:
-
-```bash
-docker-compose exec backend alembic upgrade head
-```
-
-When you update database models, generate and apply a new migration:
-
-```bash
-docker-compose exec backend alembic revision --autogenerate -m "describe_change"
-docker-compose exec backend alembic upgrade head
-```
-
-### 4. First-Time Setup
-
-On first login, the system will prompt you to create the initial admin account via the setup endpoint (`POST /api/auth/setup`). This endpoint is only available when no users exist.
-
-### 5. Production Deployment
-
-Use the production compose file which serves the built frontend through Nginx on port 80:
+Deploy the backend services (API, DB, Backup Sync) on your VPS:
 
 ```bash
 docker-compose -f docker-compose.prod.yml up -d --build
 ```
 
-In production:
-- **App**: http://localhost (or your configured domain) — port 80 only
-- Backend and PostgreSQL are on an internal Docker network (not exposed)
-- Set `SHOW_DOCS=false` and restrict `ALLOWED_ORIGINS` to your domain
+### 3. Deployment (Vercel - Frontend)
+
+1. Connect the `frontend/` directory to Vercel.
+2. Set `VITE_API_URL` environment variable to your VPS backend URL (e.g., `https://api.yourdomain.com`).
+3. Deploy. The `vercel.json` ensures that React Router handles all sub-paths.
+
+### 4. Database Migrations
+
+Apply the schema on your VPS:
+
+```bash
+docker-compose exec backend alembic upgrade head
+```
+
+### 5. Backup & Recovery
+
+- **Local Backups**: Managed by `db-backup` container. Retains 7 days of daily, 4 weeks of weekly, and 6 months of monthly backups in `./backups/`.
+- **Cloud Sync**: Managed by `backup-uploader` container. Uses `rclone` to sync the `./backups/` directory to Cloudflare R2 storage every hour.
+- **Recovery**: To restore, copy a `.sql` file from backups into the postgres container and run `psql -U $USER -d $DB < backup.sql`.
 
 ### 6. Android Build
 
 1. Open the `android/` directory in Android Studio.
-2. Define your POS server URL in `android/local.properties`:
+2. Define your POS server URL (the Vercel frontend URL) in `android/local.properties`:
    ```properties
-   pos.url=https://your-pos-url.com
+   pos.url=https://your-pos.vercel.app
    ```
-3. Build and deploy to device or emulator.
-
-## API Overview
-
-All routes are prefixed with `/api`.
-
-| Module | Prefix | Key Endpoints |
-|--------|--------|---------------|
-| Auth | `/auth` | `POST /login`, `POST /setup`, `GET /check-setup` |
-| Users | `/users` | CRUD user management (admin-only for most actions) |
-| Customers | `/customers` | Create, list, search, update, balance, delete |
-| Vouchers | `/vouchers` | Create with items, list, get by customer, delete |
-| Payments | `/payments` | Create, bulk create (FIFO settlement), list, delete |
-| Analytics | `/analytics` | `GET /dashboard` — 30-day metrics |
-| Audit Logs | `/audit-logs` | List all audit entries (admin-only) |
-
-## Database Models
-
-| Model | Description |
-|-------|-------------|
-| `User` | System users with roles (ADMIN, STAFF) |
-| `Customer` | Customers with name, phone, address, and balance relations |
-| `Voucher` | Sales vouchers with items, totals, and payment tracking |
-| `Item` | Line items on a voucher (plastic size, color, pricing) |
-| `Payment` | Standalone payments against customer balances |
-| `AuditLog` | Immutable log of all create/update/delete actions |
+3. Build and deploy to device.
 
 ## Key Architectural Patterns
 
-- **Offline-First Sync**: Frontend queues operations in IndexedDB and replays them to the backend every 15 seconds when online.
-- **Idempotency**: Vouchers, customers, and payments accept a `client_id` UUID to prevent duplicates on retry.
-- **FIFO Settlement**: Bulk payments settle against the oldest unpaid vouchers first.
-- **Audit Trail**: Every mutation records the user, action type, target, and details.
-- **Timezone**: All dates are handled in `Asia/Yangon` (UTC+6:30).
-
-## Security
-
-- In production, set `SHOW_DOCS=false` to disable the Swagger UI.
-- Restrict `ALLOWED_ORIGINS` to your exact frontend domain.
-- Backups are created daily and retained for 7 days (daily), 4 weeks (weekly), and 6 months (monthly) in `./backups/`.
-- Rotate your `SECRET_KEY` periodically and update all active sessions.
+- **Offline-First Sync**: Frontend queues operations (Vouchers, Customers, Payments) in IndexedDB. A background worker replays these every 15 seconds when connectivity is restored.
+- **Idempotency**: All creation routes accept a `client_id` (UUID) from the frontend to prevent duplicate records during sync retries.
+- **FIFO Settlement**: When a bulk payment is made, the system automatically applies it to the oldest unpaid vouchers first.
+- **Audit Trail**: Every mutation records the performing user, action type, and JSON details for accountability.
 
 ## License
 
