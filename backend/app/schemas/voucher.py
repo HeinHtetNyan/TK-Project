@@ -28,6 +28,8 @@ class VoucherBase(BaseModel):
     paid_amount: float = Field(default=0.0, ge=0)
     payment_method: Optional[PaymentMethod] = Field(default=None)
     note: Optional[str] = None
+    extra_charge_note: Optional[str] = None
+    extra_charge_amount: float = Field(default=0.0, ge=0)
 
     @field_validator("voucher_date", mode="before")
     @classmethod

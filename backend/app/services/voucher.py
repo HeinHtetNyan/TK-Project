@@ -30,9 +30,10 @@ def create_voucher_service(session: Session, voucher_in: VoucherCreate, user_id:
         ))
         
     # 4. Calculate totals
-    final_total = items_total + previous_balance
+    extra_charge = voucher_in.extra_charge_amount or 0.0
+    final_total = items_total + extra_charge + previous_balance
     remaining_balance = final_total - (voucher_in.paid_amount or 0.0)
-    
+
     # 5. Create voucher
     voucher = Voucher(
         client_id=client_id,
@@ -40,6 +41,8 @@ def create_voucher_service(session: Session, voucher_in: VoucherCreate, user_id:
         voucher_number=voucher_in.voucher_number,
         voucher_date=voucher_in.voucher_date or get_yangon_date(),
         items_total=items_total,
+        extra_charge_note=voucher_in.extra_charge_note or None,
+        extra_charge_amount=extra_charge,
         previous_balance=previous_balance,
         final_total=final_total,
         paid_amount=voucher_in.paid_amount or 0.0,

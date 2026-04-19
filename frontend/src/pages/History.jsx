@@ -333,11 +333,17 @@ const History = () => {
                             </tbody>
                           </table>
                         </div>
-                        <div className="grid grid-cols-3 gap-2 text-[9px] font-black uppercase text-center">
+                        <div className={`grid gap-2 text-[9px] font-black uppercase text-center ${item.extra_charge_amount > 0 ? 'grid-cols-4' : 'grid-cols-3'}`}>
                            <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
                               <span className="text-gray-400 block mb-1">{t('voucher_total')}</span>
                               <span className="text-gray-700 text-xs">{item.items_total.toLocaleString()}</span>
                            </div>
+                           {item.extra_charge_amount > 0 && (
+                             <div className="bg-orange-50 p-2 rounded-lg border border-orange-100 shadow-sm">
+                               <span className="text-gray-400 block mb-1 tracking-tighter truncate">{item.extra_charge_note || 'Extra'}</span>
+                               <span className="text-orange-500 text-xs">+{item.extra_charge_amount.toLocaleString()}</span>
+                             </div>
+                           )}
                            <div className="bg-white p-2 rounded-lg border border-orange-100 shadow-sm">
                               <span className="text-gray-400 block mb-1 tracking-tighter">{t('previous_balance')}</span>
                               <span className={`text-xs ${item.previous_balance > 0 ? 'text-orange-500' : 'text-gray-500'}`}>
@@ -352,7 +358,9 @@ const History = () => {
                         <div className={`flex items-center justify-between px-3 py-2 rounded-lg border text-[9px] font-black uppercase ${item.remaining_balance > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
                            <span className="text-gray-500 tracking-widest">{t('overall_total')}</span>
                            <span className="text-[10px] flex items-center gap-1 text-gray-400 font-bold normal-case tracking-normal">
-                             {item.items_total.toLocaleString()} + {item.previous_balance.toLocaleString()} − {item.paid_amount.toLocaleString()} =
+                             {item.items_total.toLocaleString()}
+                             {item.extra_charge_amount > 0 && <> + {item.extra_charge_amount.toLocaleString()}</>}
+                             {' '}+ {item.previous_balance.toLocaleString()} − {item.paid_amount.toLocaleString()} =
                              <span className={`font-black text-sm ${item.remaining_balance > 0 ? 'text-red-500' : 'text-green-600'}`}>
                                {item.remaining_balance.toLocaleString()}
                              </span>

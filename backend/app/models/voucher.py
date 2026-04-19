@@ -22,6 +22,8 @@ class Voucher(SQLModel, table=True):
     payment_method: Optional[PaymentMethod] = Field(default=None) # Used if paid_amount > 0
     remaining_balance: float = Field(default=0.0)
     note: Optional[str] = None
+    extra_charge_note: Optional[str] = None
+    extra_charge_amount: float = Field(default=0.0)
     created_at: datetime = Field(default_factory=get_yangon_now)
     updated_at: datetime = Field(default_factory=get_yangon_now)
 

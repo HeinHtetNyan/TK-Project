@@ -22,6 +22,8 @@ const Voucher = () => {
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [note, setNote] = useState('');
+  const [extraChargeNote, setExtraChargeNote] = useState('');
+  const [extraChargeAmount, setExtraChargeAmount] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -79,7 +81,8 @@ const Voucher = () => {
   };
 
   const itemsTotal = items.reduce((sum, item) => sum + item.total_price, 0);
-  const finalTotal = itemsTotal + balance;
+  const extraCharge = parseFloat(extraChargeAmount) || 0;
+  const finalTotal = itemsTotal + extraCharge + balance;
   const remainingBalance = finalTotal - (parseFloat(paidAmount) || 0);
 
   const handleSubmit = async (e) => {
@@ -109,6 +112,8 @@ const Voucher = () => {
       paid_amount: paid,
       payment_method: paid > 0 ? paymentMethod : null,
       note: note,
+      extra_charge_note: extraChargeNote || null,
+      extra_charge_amount: parseFloat(extraChargeAmount) || 0,
       items: mappedItems,
       client_id: clientId,
     };
@@ -127,6 +132,8 @@ const Voucher = () => {
           voucher_number: voucherNumber,
           voucher_date: voucherDate,
           items_total: itemsTotal,
+          extra_charge_note: extraChargeNote || null,
+          extra_charge_amount: extraCharge,
           paid_amount: paid,
           payment_method: paid > 0 ? paymentMethod : null,
           note: note,
@@ -162,6 +169,8 @@ const Voucher = () => {
           voucher_number: voucherNumber,
           voucher_date: voucherDate,
           items_total: itemsTotal,
+          extra_charge_note: extraChargeNote || null,
+          extra_charge_amount: extraCharge,
           paid_amount: paid,
           payment_method: paid > 0 ? paymentMethod : null,
           note: note,
@@ -343,6 +352,34 @@ const Voucher = () => {
             />
           </div>
 
+          <div className="bg-white p-4 rounded-3xl border-2 border-dashed border-gray-200 space-y-3">
+            <label className="text-sm font-black text-gray-500 uppercase tracking-widest">Extra Charge <span className="text-gray-300 font-bold normal-case">(optional)</span></label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-gray-400 uppercase px-1">Label</label>
+                <input
+                  type="text"
+                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-orange-400 outline-none transition-all font-bold"
+                  placeholder="e.g. Delivery Fee"
+                  value={extraChargeNote}
+                  onChange={(e) => setExtraChargeNote(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-gray-400 uppercase px-1">Amount</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-orange-400 outline-none transition-all font-bold"
+                  placeholder="0"
+                  value={extraChargeAmount}
+                  onChange={(e) => setExtraChargeAmount(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="bg-gray-800 p-6 rounded-3xl shadow-xl text-white space-y-4">
             <div className="flex justify-between items-center opacity-70">
               <span className="font-bold">{t('previous_balance')}{balanceIsEstimate ? ` ${t('est')}` : ''}</span>
@@ -352,6 +389,12 @@ const Voucher = () => {
               <span className="font-bold">{t('items_total')}</span>
               <span className="font-bold">{itemsTotal.toLocaleString()} MMK</span>
             </div>
+            {extraCharge > 0 && (
+              <div className="flex justify-between items-center opacity-70">
+                <span className="font-bold">{extraChargeNote || 'Extra Charge'}</span>
+                <span className="font-bold text-orange-300">+{extraCharge.toLocaleString()} MMK</span>
+              </div>
+            )}
             <div className="border-t border-gray-700 pt-4 flex justify-between items-center">
               <span className="text-xl font-black">{t('final_total')}</span>
               <span className="text-3xl font-black text-blue-400">{finalTotal.toLocaleString()} MMK</span>

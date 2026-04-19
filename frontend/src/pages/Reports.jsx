@@ -40,7 +40,7 @@ const Reports = () => {
   const fetchAnalytics = async () => {
     setAnalyticsLoading(true);
     try {
-      const response = await analyticsService.getDashboard();
+      const response = await analyticsService.getDashboard('3months');
       setAnalytics(response.data);
     } catch (error) {
       console.error('Error fetching analytics:', error);
