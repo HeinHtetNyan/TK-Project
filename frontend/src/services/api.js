@@ -108,7 +108,7 @@ export const paymentService = {
 };
 
 export const analyticsService = {
-  getDashboard: () => api.get('/analytics/dashboard'),
+  getDashboard: (period = 'month') => api.get('/analytics/dashboard', { params: { period } }),
 };
 
 export const auditService = {

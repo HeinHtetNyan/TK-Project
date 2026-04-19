@@ -5,6 +5,8 @@ import { TrendingUp, CreditCard, Users, DollarSign, Banknote, Smartphone, Landma
 const Dashboard = ({ data }) => {
   if (!data) return null;
 
+  const periodLabel = data.period === '3months' ? 'Last 3 Months' : 'This Month';
+
   const COLORS = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
 
   const paymentMethods = [
@@ -22,7 +24,7 @@ const Dashboard = ({ data }) => {
             <DollarSign size={24} />
           </div>
           <div>
-            <span className="text-xs font-bold text-gray-400 uppercase block tracking-wider">Total Revenue</span>
+            <span className="text-xs font-bold text-gray-400 uppercase block tracking-wider">Total Revenue <span className="text-blue-300 normal-case font-bold">({periodLabel})</span></span>
             <span className="text-xl font-black text-gray-800">
               {data.total_revenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
               <span className="text-xs ml-1 font-bold opacity-40">MMK</span>
@@ -53,7 +55,7 @@ const Dashboard = ({ data }) => {
                 <method.icon size={24} />
               </div>
               <div>
-                <span className="text-[10px] font-black text-gray-400 uppercase block tracking-widest">{method.label} Income</span>
+                <span className="text-[10px] font-black text-gray-400 uppercase block tracking-widest">{method.label} Income <span className="text-blue-300 normal-case font-bold">({periodLabel})</span></span>
                 <span className={`text-xl font-black ${method.color}`}>
                   {income.toLocaleString()}
                   <span className="text-xs ml-1 font-bold opacity-40">MMK</span>
@@ -106,7 +108,7 @@ const Dashboard = ({ data }) => {
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4">
           <div className="flex items-center gap-2 px-1">
             <Users size={20} className="text-blue-600" />
-            <h3 className="text-lg font-black text-gray-800">Top Customers</h3>
+            <h3 className="text-lg font-black text-gray-800">Top Customers <span className="text-sm text-blue-400 font-bold normal-case">({periodLabel})</span></h3>
           </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">

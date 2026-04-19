@@ -41,6 +41,7 @@ const Home = () => {
   });
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardPeriod, setDashboardPeriod] = useState('month');
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
 
   const navigate = useNavigate();
@@ -101,17 +102,17 @@ const Home = () => {
     }
   }, []);
 
-  const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async (period) => {
     try {
-      const response = await analyticsService.getDashboard();
+      const response = await analyticsService.getDashboard(period);
       setDashboardData(response.data);
     } catch (_) {}
   }, []);
 
   useEffect(() => {
     fetchAllCustomers();
-    fetchDashboardData();
-  }, [fetchAllCustomers, fetchDashboardData]);
+    fetchDashboardData(dashboardPeriod);
+  }, [fetchAllCustomers, fetchDashboardData, dashboardPeriod]);
 
   // Reset customer selection whenever we navigate to Home.
   // location.key changes on every navigation (including replace), so pressing
@@ -501,6 +502,21 @@ const Home = () => {
 
         {!selectedCustomer && !showAll && (
           <div className="space-y-8 animate-in fade-in duration-700">
+            <div className="flex items-center gap-2 justify-end">
+              {['month', '3months'].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setDashboardPeriod(p)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-black uppercase transition-all ${
+                    dashboardPeriod === p
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                >
+                  {p === 'month' ? 'This Month' : '3 Months'}
+                </button>
+              ))}
+            </div>
             <Dashboard data={dashboardData} />
 
             <div className="py-12 text-center text-gray-400 bg-white rounded-3xl border-2 border-dashed border-gray-200">
