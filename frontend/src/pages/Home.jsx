@@ -60,14 +60,14 @@ const Home = () => {
       const response = await customerService.list();
       const enriched = response.data.map(enrichCustomer);
       // Show data IMMEDIATELY — never wait for IndexedDB
-      setAllCustomers(enriched.sort((a, b) => a.name.localeCompare(b.name)));
+      setAllCustomers(enriched.sort((a, b) => (a.server_id ?? a.id) - (b.server_id ?? b.id)));
       // Cache in background; if Dexie fails it must not affect the UI
       cacheCustomers(response.data).catch(() => {});
     } catch (_) {
       // API unavailable (offline) — load from IndexedDB fallback
       try {
         const cached = await loadCachedCustomers();
-        setAllCustomers(cached.sort((a, b) => a.name.localeCompare(b.name)));
+        setAllCustomers(cached.sort((a, b) => (a.server_id ?? a.id) - (b.server_id ?? b.id)));
       } catch (__) {
         setAllCustomers([]);
       }
@@ -256,7 +256,7 @@ const Home = () => {
       setShowAddModal(false);
       resetForm();
       setAllCustomers(prev =>
-        [...prev, enriched].sort((a, b) => a.name.localeCompare(b.name))
+        [...prev, enriched].sort((a, b) => (a.server_id ?? a.id) - (b.server_id ?? b.id))
       );
       syncAll(); // attempt immediate sync — no alert needed, SyncStatus badge shows pending state
     } catch (err) {
