@@ -14,4 +14,4 @@ def calculate_customer_balance(session: Session, customer_id: int) -> float:
     payments = session.exec(select(Payment).where(Payment.customer_id == customer_id)).all()
     total_standalone_payments = sum(p.amount_paid for p in payments)
 
-    return float(total_items_cost - total_paid_on_vouchers - total_standalone_payments)
+    return round(float(total_items_cost - total_paid_on_vouchers - total_standalone_payments), 2)

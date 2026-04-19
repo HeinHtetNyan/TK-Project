@@ -333,6 +333,18 @@ export async function cacheCustomers(serverCustomers) {
     sync_status: 'synced',
   }));
   await db.customers.bulkPut(rows);
+
+  // Resolve stuck pending/failed creates whose customer is now confirmed on the server
+  const pendingCreates = await db.sync_queue
+    .where({ type: 'customer', action: 'create' })
+    .filter(item => item.status === 'pending' || item.status === 'failed')
+    .toArray();
+  for (const item of pendingCreates) {
+    const customer = await db.customers.get(item.client_id);
+    if (customer?.server_id) {
+      await db.sync_queue.update(item.localId, { status: 'done' });
+    }
+  }
 }
 
 /**
