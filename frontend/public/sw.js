@@ -53,7 +53,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   // Skip API calls — always network-only
-  if (url.pathname.startsWith('/api/') || url.port === '8000') return;
+  if (url.pathname.startsWith('/api/') || url.port === '8001') return;
 
   // Skip chrome-extension and other non-http(s) schemes
   if (!url.protocol.startsWith('http')) return;

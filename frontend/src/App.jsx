@@ -8,6 +8,7 @@ import Reports from './pages/Reports';
 import Login from './pages/Login';
 import Users from './pages/Users';
 import AuditLogs from './pages/AuditLogs';
+import Spending from './pages/Spending';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import { startSyncEngine, stopSyncEngine, syncAll } from './services/syncService';
@@ -93,6 +94,14 @@ function App() {
             element={
               <ProtectedRoute adminOnly={true}>
                 <AuditLogs />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/spending"
+            element={
+              <ProtectedRoute adminOnly={true}>
+                <Spending />
               </ProtectedRoute>
             }
           />

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, FileText, CreditCard, History, BarChart3, Users, LogOut, User as UserIcon, ShieldAlert } from 'lucide-react';
+import { Home, FileText, CreditCard, History, BarChart3, Users, LogOut, User as UserIcon, ShieldAlert, TrendingDown } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import SyncStatus from './SyncStatus';
@@ -21,6 +21,7 @@ const Layout = ({ children }) => {
   ];
 
   if (isAdmin()) {
+    navItems.push({ path: '/spending', icon: TrendingDown, label: t('spending') });
     navItems.push({ path: '/users', icon: Users, label: t('users') });
     navItems.push({ path: '/audit-logs', icon: ShieldAlert, label: t('audit') });
   }

@@ -279,9 +279,10 @@ const Voucher = () => {
                     <label className="text-[10px] font-black text-gray-400 uppercase px-1 tracking-widest">{t('weight_lb')}</label>
                     <input
                       autoFocus={index === items.length - 1}
-                      type="number" step="any" required
-                      className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold"
+                      type="number" step="any" required min="0"
+                      className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       value={item.lb}
+                      onKeyDown={(e) => e.key === '-' && e.preventDefault()}
                       onChange={(e) => handleItemChange(index, 'lb', e.target.value)}
                     />
                   </div>
@@ -297,9 +298,10 @@ const Voucher = () => {
                   <div className="space-y-1 sm:col-span-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase px-1 tracking-widest">{t('plastic_price')}</label>
                     <input
-                      type="number" required
-                      className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold"
+                      type="number" required min="0"
+                      className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       value={item.plastic_price}
+                      onKeyDown={(e) => e.key === '-' && e.preventDefault()}
                       onChange={(e) => handleItemChange(index, 'plastic_price', e.target.value)}
                     />
                   </div>
@@ -315,9 +317,10 @@ const Voucher = () => {
                   <div className="space-y-1 sm:col-span-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase px-1 tracking-widest">{t('color_price')}</label>
                     <input
-                      type="number" required
-                      className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold"
+                      type="number" required min="0"
+                      className="w-full p-2 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-all font-bold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       value={item.color_price}
+                      onKeyDown={(e) => e.key === '-' && e.preventDefault()}
                       onChange={(e) => handleItemChange(index, 'color_price', e.target.value)}
                     />
                   </div>
@@ -371,9 +374,10 @@ const Voucher = () => {
                   type="number"
                   min="0"
                   step="any"
-                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-orange-400 outline-none transition-all font-bold"
+                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-orange-400 outline-none transition-all font-bold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   placeholder="0"
                   value={extraChargeAmount}
+                  onKeyDown={(e) => e.key === '-' && e.preventDefault()}
                   onChange={(e) => setExtraChargeAmount(e.target.value)}
                 />
               </div>
@@ -406,9 +410,11 @@ const Voucher = () => {
               <label className="text-sm font-black text-gray-600 uppercase px-1">{t('paid_amount')}</label>
               <input
                 type="number"
-                className="w-full p-4 bg-blue-50 border-2 border-blue-100 rounded-2xl outline-none focus:border-blue-500 transition-all text-2xl font-black text-blue-700 text-center"
+                min="0"
+                className="w-full p-4 bg-blue-50 border-2 border-blue-100 rounded-2xl outline-none focus:border-blue-500 transition-all text-2xl font-black text-blue-700 text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 placeholder="0"
                 value={paidAmount}
+                onKeyDown={(e) => e.key === '-' && e.preventDefault()}
                 onChange={(e) => setPaidAmount(e.target.value)}
               />
             </div>

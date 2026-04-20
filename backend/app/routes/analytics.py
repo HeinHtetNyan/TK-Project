@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, select, func
 from app.db import get_session
-from app.models import Voucher, Customer, Payment, User
+from app.models import Voucher, Customer, Payment, User, Spending
 from app.dependencies.auth import require_staff_or_admin
 from app.services.balance import calculate_customer_balance
 from datetime import datetime, timedelta, date
@@ -78,7 +78,12 @@ def get_dashboard_data(
     ).all()
     top_customers = [{"name": name, "revenue": revenue} for name, revenue in top_customers_results]
 
-    # 6. All Customer Debts — always all-time
+    # 6. Total Spending for selected period
+    total_spending = float(session.exec(
+        select(func.sum(Spending.amount)).where(Spending.spending_date >= start_date)
+    ).first() or 0.0)
+
+    # 7. All Customer Debts — always all-time
     all_customers = session.exec(select(Customer)).all()
     debt_list = sorted(
         [{"name": c.name, "debt": calculate_customer_balance(session, c.id)} for c in all_customers],
@@ -93,5 +98,6 @@ def get_dashboard_data(
         "total_revenue": total_revenue,
         "income_by_method": income_list,
         "debt_list": debt_list,
+        "total_spending": total_spending,
         "period": period,
     }

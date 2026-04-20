@@ -1,18 +1,50 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 const DropdownDatePicker = ({ value, onChange, label }) => {
-  // value format: DD-MM-YYYY
-  const parts = value ? value.split('-') : ['', '', ''];
-  const day = parts[0] || '';
-  const month = parts[1] || '';
-  const year = parts[2] || '';
+  const splitValue = (v) => {
+    const parts = v ? v.split('-') : [];
+    return {
+      d: parts[0] || '',
+      m: parts[1] || '',
+      y: parts[2] || '',
+    };
+  };
 
-  const handleChange = (d, m, y) => {
+  const initial = splitValue(value);
+  const [localDay, setLocalDay] = useState(initial.d);
+  const [localMonth, setLocalMonth] = useState(initial.m);
+  const [localYear, setLocalYear] = useState(initial.y);
+
+  // Sync from parent only when value changes externally (e.g. reset)
+  useEffect(() => {
+    const { d, m, y } = splitValue(value);
+    setLocalDay(d);
+    setLocalMonth(m);
+    setLocalYear(y);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const emit = (d, m, y) => {
     if (d && m && y) {
       onChange(`${d.padStart(2, '0')}-${m.padStart(2, '0')}-${y}`);
-    } else {
-      onChange('');
     }
+    // If incomplete, don't call onChange — keep parent value as-is
+    // so other fields stay intact when user accidentally picks the placeholder
+  };
+
+  const handleDay = (d) => {
+    setLocalDay(d);
+    emit(d, localMonth, localYear);
+  };
+
+  const handleMonth = (m) => {
+    setLocalMonth(m);
+    emit(localDay, m, localYear);
+  };
+
+  const handleYear = (y) => {
+    setLocalYear(y);
+    emit(localDay, localMonth, y);
   };
 
   const days = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
@@ -24,26 +56,26 @@ const DropdownDatePicker = ({ value, onChange, label }) => {
     <div className="space-y-1">
       {label && <label className="text-[10px] font-black text-gray-400 uppercase px-1">{label}</label>}
       <div className="flex gap-1">
-        <select 
+        <select
           className="flex-1 p-2 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-sm outline-none focus:border-blue-500"
-          value={day}
-          onChange={(e) => handleChange(e.target.value, month, year)}
+          value={localDay}
+          onChange={(e) => handleDay(e.target.value)}
         >
           <option value="">Day</option>
           {days.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
-        <select 
+        <select
           className="flex-1 p-2 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-sm outline-none focus:border-blue-500"
-          value={month}
-          onChange={(e) => handleChange(day, e.target.value, year)}
+          value={localMonth}
+          onChange={(e) => handleMonth(e.target.value)}
         >
           <option value="">Month</option>
           {months.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <select 
+        <select
           className="flex-1 p-2 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-sm outline-none focus:border-blue-500"
-          value={year}
-          onChange={(e) => handleChange(day, month, e.target.value)}
+          value={localYear}
+          onChange={(e) => handleYear(e.target.value)}
         >
           <option value="">Year</option>
           {years.map(y => <option key={y} value={y}>{y}</option>)}

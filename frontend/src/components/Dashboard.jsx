@@ -1,11 +1,15 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
-import { TrendingUp, CreditCard, Users, DollarSign, Banknote, Smartphone, Landmark } from 'lucide-react';
+import { TrendingUp, CreditCard, Users, DollarSign, Banknote, Smartphone, Landmark, TrendingDown } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 
 const Dashboard = ({ data }) => {
+  const { t } = useLanguage();
   if (!data) return null;
 
   const periodLabel = data.period === '3months' ? 'Last 3 Months' : 'This Month';
+  const totalSpending = data.total_spending ?? 0;
+  const netIncome = (data.total_revenue ?? 0) - totalSpending;
 
   const COLORS = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
 
@@ -18,7 +22,7 @@ const Dashboard = ({ data }) => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
           <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
             <DollarSign size={24} />
@@ -40,6 +44,23 @@ const Dashboard = ({ data }) => {
             <span className="text-xl font-black text-red-600">
               {data.total_debt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
               <span className="text-xs ml-1 font-bold opacity-40">MMK</span>
+            </span>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className={`p-3 rounded-2xl ${netIncome >= 0 ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'}`}>
+            <TrendingDown size={24} />
+          </div>
+          <div>
+            <span className="text-xs font-bold text-gray-400 uppercase block tracking-wider">
+              {t('net_income')} <span className="text-blue-300 normal-case font-bold">({periodLabel})</span>
+            </span>
+            <span className={`text-xl font-black ${netIncome >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
+              {netIncome.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+              <span className="text-xs ml-1 font-bold opacity-40">MMK</span>
+            </span>
+            <span className="text-[10px] text-gray-400 font-bold block">
+              {t('total_spending')}: {totalSpending.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} MMK
             </span>
           </div>
         </div>

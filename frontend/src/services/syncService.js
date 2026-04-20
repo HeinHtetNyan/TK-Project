@@ -164,6 +164,41 @@ async function syncPayment(item) {
 }
 
 // --------------------------------------------------------------------------
+// Spending sync
+// --------------------------------------------------------------------------
+
+async function syncSpending(item) {
+  const res = await api.post('/spendings', {
+    ...item.payload,
+    client_id: item.client_id,
+  });
+  await db.spendings.update(item.client_id, {
+    server_id: res.data.id,
+    sync_status: 'synced',
+  });
+}
+
+async function syncSpendingUpdate(item) {
+  const { server_id, ...fields } = item.payload;
+  await api.put(`/spendings/${server_id}`, fields);
+  await db.spendings.update(item.client_id, {
+    description: fields.description,
+    amount: fields.amount,
+    spending_date: fields.spending_date,
+    sync_status: 'synced',
+  });
+}
+
+async function syncSpendingDelete(item) {
+  try {
+    await api.delete(`/spendings/${item.payload.server_id}`);
+  } catch (err) {
+    if (err.response?.status !== 404) throw err;
+  }
+  await db.spendings.delete(item.client_id);
+}
+
+// --------------------------------------------------------------------------
 // Customer update sync
 // --------------------------------------------------------------------------
 
@@ -231,6 +266,9 @@ async function processQueueItem(item) {
     else if (item.type === 'voucher' && item.action === 'delete') await syncVoucherDelete(item);
     else if (item.type === 'payment' && item.action === 'create') await syncPayment(item);
     else if (item.type === 'payment' && item.action === 'delete') await syncPaymentDelete(item);
+    else if (item.type === 'spending' && item.action === 'create') await syncSpending(item);
+    else if (item.type === 'spending' && item.action === 'update') await syncSpendingUpdate(item);
+    else if (item.type === 'spending' && item.action === 'delete') await syncSpendingDelete(item);
 
     await db.sync_queue.update(item.localId, { status: 'done' });
   } catch (err) {

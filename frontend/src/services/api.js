@@ -11,8 +11,8 @@ const getBaseURL = () => {
   if (hostname.includes('.') && !hostname.match(/^\d/)) {
     return '/api';
   }
-  // If it's localhost or an IP, use explicit port 8000
-  return `${protocol}//${hostname}:8000/api`;
+  // If it's localhost or an IP, use explicit port 8001
+  return `${protocol}//${hostname}:8001/api`;
 };
 
 const api = axios.create({
@@ -114,6 +114,13 @@ export const analyticsService = {
 
 export const auditService = {
   list: () => api.get('/audit-logs'),
+};
+
+export const spendingService = {
+  create: (data) => api.post('/spendings', data),
+  list: () => api.get('/spendings'),
+  update: (id, data) => api.put(`/spendings/${id}`, data),
+  delete: (id) => api.delete(`/spendings/${id}`),
 };
 
 export default api;

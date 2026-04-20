@@ -30,32 +30,18 @@ export function generateUUID() {
 const db = new Dexie('TKPlasticPress');
 
 db.version(1).stores({
-  // Cached + offline-created customers
   customers: '&client_id, server_id, name, sync_status, created_at',
-
-  // Cached + offline-created vouchers
   vouchers:
     '&client_id, server_id, customer_client_id, customer_server_id, voucher_number, sync_status, created_at',
-
-  // Cached + offline-created standalone payments
   payments:
     '&client_id, server_id, customer_client_id, customer_server_id, sync_status, created_at',
-
-  /**
-   * sync_queue — one entry per operation that needs to reach the server.
-   * localId    — auto-increment surrogate key (ordering guarantee)
-   * client_id  — UUID of the record being synced (matches the record's client_id)
-   * type       — 'customer' | 'voucher' | 'payment'
-   * action     — 'create' | 'update' | 'delete'
-   * payload    — full JSON to POST to the backend
-   * status     — 'pending' | 'processing' | 'done' | 'failed'
-   * retries    — how many times this item has failed
-   * depends_on_client_id — if not null, this item must wait until the referenced
-   *                         item reaches 'done' (used when a voucher/payment belongs
-   *                         to a customer that was also created offline)
-   */
   sync_queue:
     '++localId, client_id, type, action, status, depends_on_client_id, created_at',
+});
+
+db.version(2).stores({
+  // Offline-created spending/outcome entries (admin only)
+  spendings: '&client_id, server_id, spending_date, sync_status, created_at',
 });
 
 export default db;

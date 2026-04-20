@@ -187,9 +187,10 @@ const Payment = () => {
                   <label className="text-sm font-black text-gray-600 uppercase px-1">{t('payment_amount')}</label>
                   <input
                     autoFocus required type="number" min="1" step="1"
-                    className="w-full p-4 bg-green-50 border-2 border-green-100 rounded-2xl outline-none focus:border-green-500 transition-all text-3xl font-black text-green-700 text-center"
+                    className="w-full p-4 bg-green-50 border-2 border-green-100 rounded-2xl outline-none focus:border-green-500 transition-all text-3xl font-black text-green-700 text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     placeholder="0"
                     value={amount}
+                    onKeyDown={(e) => e.key === '-' && e.preventDefault()}
                     onChange={(e) => setAmount(e.target.value)}
                   />
                 </div>
