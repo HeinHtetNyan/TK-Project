@@ -1,16 +1,23 @@
 from datetime import datetime, date
 from typing import Optional, Any
 from pydantic import BaseModel, Field, field_validator, field_serializer
+from zoneinfo import ZoneInfo
+
+
+def _yangon_today() -> date:
+    return datetime.now(ZoneInfo("Asia/Yangon")).date()
 
 
 class SpendingBase(BaseModel):
     description: str
     amount: float = Field(ge=0)
-    spending_date: Optional[date] = None
+    spending_date: date = Field(default_factory=_yangon_today)
 
     @field_validator("spending_date", mode="before")
     @classmethod
     def parse_spending_date(cls, v: Any) -> Any:
+        if v is None:
+            return _yangon_today()
         if isinstance(v, str) and v:
             try:
                 return datetime.strptime(v, "%d-%m-%Y").date()
