@@ -232,6 +232,14 @@ const Spending = () => {
     }
   };
 
+  const [expandedIds, setExpandedIds] = useState(new Set());
+  const toggleExpand = (key) =>
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
   const totalSpending = spendings.reduce((sum, s) => sum + (s.amount || 0), 0);
 
   return (
@@ -292,10 +300,10 @@ const Spending = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-gray-400 uppercase px-1 tracking-widest">{t('spending_description')}</label>
-                  <input
-                    type="text"
+                  <textarea
                     required
-                    className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-orange-400 outline-none transition-all font-bold"
+                    rows={3}
+                    className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-orange-400 outline-none transition-all font-bold resize-y"
                     placeholder={t('spending_desc_placeholder')}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
@@ -342,42 +350,49 @@ const Spending = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {spendings.map((s, i) => (
-              <div
-                key={s.client_id || s.id || i}
-                className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <span className="font-black text-gray-800 text-lg leading-tight block truncate">{s.description}</span>
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider mt-1 block">
-                      {s.spending_date}
-                      {s.sync_status === 'pending' && (
-                        <span className="ml-2 text-yellow-500">(pending sync)</span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xl font-black text-orange-600 tabular-nums">
-                      {(s.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                      <span className="text-xs ml-1 font-bold opacity-50">MMK</span>
-                    </span>
-                    <button
-                      onClick={() => handleEdit(s)}
-                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(s)}
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+            {spendings.map((s, i) => {
+              const key = s.client_id || s.id || i;
+              const isExpanded = expandedIds.has(key);
+              return (
+                <div
+                  key={key}
+                  className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                  onClick={() => toggleExpand(key)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <span className={`font-black text-gray-800 text-lg leading-tight break-words whitespace-pre-wrap ${isExpanded ? 'block' : 'line-clamp-2'}`}>
+                        {s.description}
+                      </span>
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider mt-1 block">
+                        {s.spending_date}
+                        {s.sync_status === 'pending' && (
+                          <span className="ml-2 text-yellow-500">(pending sync)</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xl font-black text-orange-600 tabular-nums">
+                        {(s.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                        <span className="text-xs ml-1 font-bold opacity-50">MMK</span>
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEdit(s); }}
+                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(s); }}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
